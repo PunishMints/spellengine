@@ -1,7 +1,7 @@
 extends Node2D
 
 func _ready() -> void:
-	test_plugin_functionality()
+	print("loaded main.gd")
 
 func test_plugin_functionality()->void:
 	var my_res:ItemData = ItemData.new()
