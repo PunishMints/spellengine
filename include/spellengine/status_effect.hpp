@@ -16,9 +16,11 @@ private:
     double amount_per_tick = 0.0;
     double tick_interval = 1.0;
     double remaining_time = 0.0;
-    String element = "";
+    String aspect = "";
+    Dictionary metadata;
 
 public:
-    void configure(double amount, double interval, double duration, const String &p_element);
+    void configure(double amount, double interval, double duration, const String &p_aspect);
+    void set_metadata(const Dictionary &m);
     void _on_tick();
 };

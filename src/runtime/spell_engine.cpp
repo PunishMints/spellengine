@@ -7,8 +7,23 @@
 #include "spellengine/spell_caster.hpp"
 #include "spellengine/synergy_registry.hpp"
 #include <godot_cpp/variant/callable.hpp>
+#include "spellengine/aspect.hpp"
+#include <algorithm>
 
 using namespace godot;
+
+// Helper: merge two scalers according to mode
+static double merge_scalers(double existing, double incoming, int mode) {
+    switch (mode) {
+        case SpellEngine::MERGE_ADD: return existing + incoming;
+        case SpellEngine::MERGE_MULTIPLY: return existing * incoming;
+        case SpellEngine::MERGE_MIN: return std::min(existing, incoming);
+        case SpellEngine::MERGE_MAX: return std::max(existing, incoming);
+        case SpellEngine::MERGE_OVERWRITE:
+        default:
+            return incoming;
+    }
+}
 
 Ref<Spell> SpellEngine::build_spell_from_aspects(const TypedArray<Ref<Aspect>> &aspects) {
     Ref<Spell> spell = memnew(Spell);
@@ -28,6 +43,24 @@ Ref<Spell> SpellEngine::build_spell_from_aspects(const TypedArray<Ref<Aspect>> &
     return spell;
 }
 
+void SpellEngine::set_default_merge_mode(const String &key, int mode) {
+    default_merge_modes[key] = mode;
+}
+
+int SpellEngine::get_default_merge_mode(const String &key) const {
+    if (default_merge_modes.has(key)) return (int)default_merge_modes[key];
+    return MERGE_OVERWRITE;
+}
+
+void SpellEngine::set_merge_mode_mana_multiplier(int mode, double multiplier) {
+    merge_mode_multipliers[mode] = multiplier;
+}
+
+double SpellEngine::get_merge_mode_mana_multiplier(int mode) const {
+    if (merge_mode_multipliers.has(mode)) return (double)merge_mode_multipliers[mode];
+    return 1.0;
+}
+
 void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
     if (!spell.is_valid()) {
         UtilityFunctions::print("SpellEngine: invalid spell passed to execute_spell");
@@ -36,6 +69,10 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
 
     Array casting_aspects;
     Dictionary ctx_params = ctx->get_params();
+
+    // generate a unique cast id for this spell execution (propagated to executors and synergies)
+    cast_counter += 1;
+    String cast_id = "spell_cast_" + String::num(cast_counter);
     if (ctx_params.has("aspects")) {
         Variant v = ctx_params["aspects"];
         if (v.get_type() == Variant::ARRAY) casting_aspects = v;
@@ -55,7 +92,12 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
         SpellCaster *sc_for_resolve = nullptr;
         if (caster_node) sc_for_resolve = Object::cast_to<SpellCaster>(caster_node);
 
-        Dictionary resolved = resolve_component_params(comp, casting_aspects, sc_for_resolve);
+    Dictionary resolved = resolve_component_params(comp, casting_aspects, sc_for_resolve, ctx_params);
+        if (verbose_composition) {
+            UtilityFunctions::print(String("[SpellEngine] Resolved component '") + comp->get_executor_id() + "':");
+            if (resolved.has("resolved_params")) UtilityFunctions::print(String("  resolved_params: ") + String::num(resolved["resolved_params"].get_type()));
+            if (resolved.has("cost_per_aspect")) UtilityFunctions::print(String("  cost_per_aspect: ") + String::num(resolved["cost_per_aspect"].get_type()));
+        }
         Dictionary resolved_params;
         if (resolved.has("resolved_params")) resolved_params = resolved["resolved_params"];
 
@@ -89,7 +131,10 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
         if (reg && reg->has_executor(comp->get_executor_id())) {
             Ref<IExecutor> exec = reg->get_executor(comp->get_executor_id());
             if (exec.is_valid()) {
-                exec->execute(ctx, comp, resolved_params);
+                // ensure the resolved params carry the cast id so targets can group events
+                Dictionary rp_with_cast = resolved_params;
+                rp_with_cast["cast_id"] = cast_id;
+                exec->execute(ctx, comp, rp_with_cast);
             }
         } else {
             UtilityFunctions::print(String("SpellEngine: no executor registered for: ") + comp->get_executor_id());
@@ -115,7 +160,10 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                         Array args;
                         args.push_back(ctx);
                         args.push_back(comp);
-                        args.push_back(resolved_params);
+                        // pass a copy of resolved_params augmented with cast_id
+                        Dictionary rp_with_cast = resolved_params;
+                        rp_with_cast["cast_id"] = cast_id;
+                        args.push_back(rp_with_cast);
                         args.push_back(spec);
                         args.push_back(skey);
                         cb.callv(args);
@@ -128,7 +176,9 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                                 Array args;
                                 args.push_back(ctx);
                                 args.push_back(comp);
-                                args.push_back(resolved_params);
+                                Dictionary rp_with_cast = resolved_params;
+                                rp_with_cast["cast_id"] = cast_id;
+                                args.push_back(rp_with_cast);
                                 args.push_back(spec);
                                 args.push_back(skey);
                                 cb.callv(args);
@@ -236,7 +286,12 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
 
                             if (reg && reg->has_executor(extra_exec_id)) {
                                 Ref<IExecutor> extra_exec = reg->get_executor(extra_exec_id);
-                                if (extra_exec.is_valid()) extra_exec->execute(ctx, comp, extra_params);
+                                if (extra_exec.is_valid()) {
+                                    // ensure extra executor params include the cast id
+                                    Dictionary extra_with_cast = extra_params;
+                                    extra_with_cast["cast_id"] = cast_id;
+                                    extra_exec->execute(ctx, comp, extra_with_cast);
+                                }
                             }
                         }
                     }
@@ -246,7 +301,70 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
     }
 }
 
-Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, const Array &casting_aspects, SpellCaster *caster) {
+Dictionary SpellEngine::get_adjusted_mana_costs(Ref<Spell> spell, Ref<SpellContext> ctx) {
+    Dictionary out;
+    Dictionary total_per_aspect;
+    double total_mana = 0.0;
+    if (!spell.is_valid() || !ctx.is_valid()) {
+        out["costs_per_aspect"] = total_per_aspect;
+        out["total_mana"] = total_mana;
+        out["per_component"] = Dictionary();
+        return out;
+    }
+
+    Array comps_arr = spell->get_components();
+    Dictionary per_component;
+    Dictionary ctx_params = ctx->get_params();
+
+    Node *caster_node = ctx->get_caster();
+    SpellCaster *sc_for_resolve = nullptr;
+    if (caster_node) sc_for_resolve = Object::cast_to<SpellCaster>(caster_node);
+
+    // Determine casting aspects similar to execute_spell
+    Array casting_aspects;
+    if (ctx_params.has("aspects")) {
+        Variant v = ctx_params["aspects"];
+        if (v.get_type() == Variant::ARRAY) casting_aspects = v;
+    }
+
+    if (casting_aspects.size() == 0 && caster_node) {
+        if (sc_for_resolve) casting_aspects = sc_for_resolve->get_assigned_aspects();
+    }
+
+    for (int i = 0; i < comps_arr.size(); ++i) {
+        Ref<SpellComponent> comp = comps_arr[i];
+        if (!comp.is_valid()) continue;
+        Dictionary resolved = resolve_component_params(comp, casting_aspects, sc_for_resolve, ctx_params);
+        Dictionary comp_costs;
+        if (resolved.has("cost_per_aspect")) comp_costs = resolved["cost_per_aspect"];
+        Array k = comp_costs.keys();
+        for (int ki = 0; ki < k.size(); ++ki) {
+            String a = k[ki];
+            double v = 0.0;
+            Variant vv = comp_costs[a];
+            if (vv.get_type() == Variant::INT || vv.get_type() == Variant::FLOAT) v = (double)vv;
+            if (total_per_aspect.has(a)) total_per_aspect[a] = (double)total_per_aspect[a] + v;
+            else total_per_aspect[a] = v;
+            total_mana += v;
+        }
+        per_component[comp->get_executor_id()] = comp_costs;
+    }
+
+    out["costs_per_aspect"] = total_per_aspect;
+    out["total_mana"] = total_mana;
+    out["per_component"] = per_component;
+    return out;
+}
+
+void SpellEngine::set_verbose_composition(bool v) {
+    verbose_composition = v;
+}
+
+bool SpellEngine::get_verbose_composition() const {
+    return verbose_composition;
+}
+
+Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, const Array &casting_aspects, SpellCaster *caster, const Dictionary &ctx_params) {
     Dictionary out;
     if (!component.is_valid()) return out;
 
@@ -304,6 +422,9 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
         if (base_val.get_type() == Variant::INT || base_val.get_type() == Variant::FLOAT) {
             double base_num = (double)base_val;
             double acc = 0.0;
+            if (verbose_composition) {
+                UtilityFunctions::print(String("[SpellEngine] composing param '") + (String)key + "' base=" + String::num((double)base_val));
+            }
             for (int i = 0; i < aspects_used.size(); ++i) {
                 String a = aspects_used[i];
                 double share = (double)normalized[a];
@@ -318,20 +439,76 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
                         }
                     }
                 }
+                if (verbose_composition) {
+                    UtilityFunctions::print(String("    aspect '") + a + "' share=" + String::num(share) + " mod=" + String::num(mod));
+                }
                 acc += share * (base_num * mod);
             }
             double final_val = acc;
-            if (caster) {
-                double mult = 0.0;
-                for (int i = 0; i < aspects_used.size(); ++i) {
-                    String a = aspects_used[i];
-                    double share = (double)normalized[a];
-                    double scaler = caster->get_scaler(a, (String)key);
-                    mult += share * scaler;
+            // during composition, merge caster scaler and aspect default scalers per-key according to merge modes
+            double mult = 0.0;
+            for (int i = 0; i < aspects_used.size(); ++i) {
+                String a = aspects_used[i];
+                double share = (double)normalized[a];
+
+                // aspect default scaler: prefer values on the Aspect resource, but fall back to a single-aspect Synergy resource's default_scalers
+                double aspect_default = 1.0;
+                bool found_aspect_default = false;
+                // Prefer default scalers from the Synergy resource for the single aspect.
+                // Aspect resources are treated as presentation-only (text/visuals).
+                SynergyRegistry *sreg_single = SynergyRegistry::get_singleton();
+                if (sreg_single) {
+                    String lookup_key = a;
+                    if (!sreg_single->has_synergy(lookup_key)) lookup_key = a.to_lower();
+                    if (sreg_single->has_synergy(lookup_key)) {
+                        Dictionary spec_single = sreg_single->get_synergy(lookup_key);
+                        if (spec_single.has("default_scalers")) {
+                            Variant sv = spec_single["default_scalers"];
+                            if (sv.get_type() == Variant::DICTIONARY) {
+                                Dictionary sdefs = sv;
+                                if (sdefs.has((String)key)) {
+                                    Variant dv = sdefs[(String)key];
+                                    if (dv.get_type() == Variant::INT || dv.get_type() == Variant::FLOAT) {
+                                        aspect_default = (double)dv;
+                                        found_aspect_default = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-                if (mult <= 0.0) mult = 1.0;
-                final_val = acc * mult;
+
+                double caster_scaler = 1.0;
+                if (caster) caster_scaler = caster->get_scaler(a, (String)key);
+
+                // determine merge mode: prefer context override, else engine default, else overwrite
+                int mode = MERGE_OVERWRITE;
+                if (ctx_params.has("merge_modes")) {
+                    Variant mmv = ctx_params["merge_modes"];
+                    if (mmv.get_type() == Variant::DICTIONARY) {
+                        Dictionary md = mmv;
+                        if (md.has((String)key)) {
+                            Variant mv = md[(String)key];
+                            if (mv.get_type() == Variant::INT) mode = (int)mv;
+                        }
+                    }
+                }
+                if (mode == MERGE_OVERWRITE) {
+                    if (default_merge_modes.has((String)key)) {
+                        Variant dv = default_merge_modes[(String)key];
+                        if (dv.get_type() == Variant::INT) mode = (int)dv;
+                    }
+                }
+                Variant dm = Dictionary();
+                // Merge existing caster and aspect_default according to mode
+                double merged = merge_scalers(caster_scaler, aspect_default, mode);
+                if (verbose_composition) {
+                    UtilityFunctions::print(String("    merging scaler for aspect '") + a + "' key='" + (String)key + "' caster_scaler=" + String::num(caster_scaler) + " aspect_default=" + String::num(aspect_default) + " mode=" + String::num(mode) + " => merged=" + String::num(merged));
+                }
+                mult += share * merged;
             }
+            if (mult <= 0.0) mult = 1.0;
+            final_val = acc * mult;
             resolved_params[key] = final_val;
         } else {
             resolved_params[key] = base_val;
@@ -339,9 +516,101 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
     }
 
     double total_cost = component->get_cost();
+    // If the component defines a mana_cost in its base params, use that as the starting point
     if (resolved_params.has("mana_cost")) {
         Variant mc = resolved_params["mana_cost"];
         if (mc.get_type() == Variant::INT || mc.get_type() == Variant::FLOAT) total_cost = (double)mc;
+    }
+
+    // Apply per-aspect and caster scalers to mana_cost even if mana_cost wasn't present in base.
+    // Compute a merged multiplier across aspects (weighted by normalized shares).
+    double mana_scaler_mult = 0.0;
+    for (int i = 0; i < aspects_used.size(); ++i) {
+        String a = aspects_used[i];
+        double share = (double)normalized[a];
+
+        double aspect_default = 1.0;
+        bool found_aspect_default = false;
+        // Prefer mana_cost default scalers from the single-aspect Synergy resource.
+        SynergyRegistry *sreg_single_mc = SynergyRegistry::get_singleton();
+        if (sreg_single_mc) {
+            String lookup_key = a;
+            if (!sreg_single_mc->has_synergy(lookup_key)) lookup_key = a.to_lower();
+            if (sreg_single_mc->has_synergy(lookup_key)) {
+                Dictionary spec_single = sreg_single_mc->get_synergy(lookup_key);
+                if (spec_single.has("default_scalers")) {
+                    Variant sv = spec_single["default_scalers"];
+                    if (sv.get_type() == Variant::DICTIONARY) {
+                        Dictionary sdefs = sv;
+                        if (sdefs.has("mana_cost")) {
+                            Variant dv = sdefs["mana_cost"];
+                            if (dv.get_type() == Variant::INT || dv.get_type() == Variant::FLOAT) aspect_default = (double)dv;
+                        }
+                    }
+                }
+            }
+        }
+
+        double caster_scaler = 1.0;
+        if (caster) caster_scaler = caster->get_scaler(a, "mana_cost");
+
+        // resolve merge mode for mana_cost (context override -> engine default -> overwrite)
+        int mode = MERGE_OVERWRITE;
+        if (ctx_params.has("merge_modes")) {
+            Variant mmv = ctx_params["merge_modes"];
+            if (mmv.get_type() == Variant::DICTIONARY) {
+                Dictionary md = mmv;
+                if (md.has("mana_cost")) {
+                    Variant mv = md["mana_cost"];
+                    if (mv.get_type() == Variant::INT) mode = (int)mv;
+                }
+            }
+        }
+        if (mode == MERGE_OVERWRITE) {
+            if (default_merge_modes.has("mana_cost")) {
+                Variant dv = default_merge_modes["mana_cost"];
+                if (dv.get_type() == Variant::INT) mode = (int)dv;
+            }
+        }
+
+        double merged = merge_scalers(caster_scaler, aspect_default, mode);
+        if (verbose_composition) {
+            UtilityFunctions::print(String("[SpellEngine] mana cost scaler for aspect '") + a + "' caster=" + String::num(caster_scaler) + " aspect_default=" + String::num(aspect_default) + " mode=" + String::num(mode) + " => merged=" + String::num(merged) + " share=" + String::num(share));
+        }
+        mana_scaler_mult += share * merged;
+    }
+    if (mana_scaler_mult <= 0.0) mana_scaler_mult = 1.0;
+    total_cost *= mana_scaler_mult;
+    // update resolved_params so callers see final mana_cost
+    resolved_params["mana_cost"] = total_cost;
+    // Apply merge-mode mana multiplier if defined for the 'mana_cost' key
+    double mana_multiplier = 1.0;
+    if (resolved_params.has("mana_cost")) {
+        // determine merge mode for mana_cost (context override -> engine default -> overwrite)
+        int mana_mode = MERGE_MULTIPLY;
+        if (ctx_params.has("merge_modes")) {
+            Variant mmv = ctx_params["merge_modes"];
+            if (mmv.get_type() == Variant::DICTIONARY) {
+                Dictionary md = mmv;
+                if (md.has("mana_cost")) {
+                    Variant mv = md["mana_cost"];
+                    if (mv.get_type() == Variant::INT) mana_mode = (int)mv;
+                }
+            }
+        }
+        if (mana_mode == MERGE_OVERWRITE) {
+            if (default_merge_modes.has("mana_cost")) {
+                Variant dv = default_merge_modes["mana_cost"];
+                if (dv.get_type() == Variant::INT) mana_mode = (int)dv;
+            }
+        }
+
+        // fetch multiplier for the resolved mana_mode
+        mana_multiplier = get_merge_mode_mana_multiplier(mana_mode);
+        total_cost *= mana_multiplier;
+    }
+    if (verbose_composition) {
+        UtilityFunctions::print(String("[SpellEngine] final total_cost for component '") + component->get_executor_id() + "' = " + String::num(total_cost) + " (mana_multiplier=" + String::num(mana_multiplier) + ")");
     }
     Dictionary cost_per_aspect;
     for (int i = 0; i < aspects_used.size(); ++i) {
@@ -375,14 +644,30 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
         SynergyRegistry *sreg = SynergyRegistry::get_singleton();
         if (sreg && sreg->has_synergy(key)) {
             Dictionary spec = sreg->get_synergy(key);
-            if (spec.has("modifiers")) {
-                Variant mv = spec["modifiers"];
-                if (mv.get_type() == Variant::DICTIONARY) {
-                    Dictionary md = mv;
-                    Array mk = md.keys();
-                    for (int i = 0; i < mk.size(); ++i) {
-                        String mkey = mk[i];
-                        resolved_params[mkey] = md[mkey];
+            // Apply synergy-level default_scalers (scale existing numeric resolved params)
+            // Only apply combined-key synergy scalers when multiple aspects are involved.
+            // Single-aspect defaults are already sourced per-aspect above from the
+            // single-aspect synergy resource.
+            if (aspects_used.size() > 1 && spec.has("default_scalers")) {
+                Variant sv = spec["default_scalers"];
+                if (sv.get_type() == Variant::DICTIONARY) {
+                    Dictionary sdefs = sv;
+                    Array sk = sdefs.keys();
+                    for (int si = 0; si < sk.size(); ++si) {
+                        String skey = sk[si];
+                        Variant sval = sdefs[skey];
+                        if (!(sval.get_type() == Variant::INT || sval.get_type() == Variant::FLOAT)) continue;
+                        double scaler = (double)sval;
+                        // if resolved param exists and is numeric, multiply it
+                        if (resolved_params.has(skey)) {
+                            Variant rv = resolved_params[skey];
+                            if (rv.get_type() == Variant::INT || rv.get_type() == Variant::FLOAT) {
+                                resolved_params[skey] = (double)rv * scaler;
+                            }
+                        } else {
+                            // If param not present, set it to scaler (applies to params like mana_cost, fallback handled elsewhere)
+                            resolved_params[skey] = scaler;
+                        }
                     }
                 }
             }
@@ -423,4 +708,13 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
 void SpellEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("build_spell_from_aspects", "aspects"), &SpellEngine::build_spell_from_aspects);
     ClassDB::bind_method(D_METHOD("execute_spell", "spell", "context"), &SpellEngine::execute_spell);
+    ClassDB::bind_method(D_METHOD("set_default_merge_mode", "key", "mode"), &SpellEngine::set_default_merge_mode);
+    ClassDB::bind_method(D_METHOD("get_default_merge_mode", "key"), &SpellEngine::get_default_merge_mode);
+    ClassDB::bind_method(D_METHOD("set_merge_mode_mana_multiplier", "mode", "multiplier"), &SpellEngine::set_merge_mode_mana_multiplier);
+    ClassDB::bind_method(D_METHOD("get_merge_mode_mana_multiplier", "mode"), &SpellEngine::get_merge_mode_mana_multiplier);
+    ClassDB::bind_method(D_METHOD("get_adjusted_mana_costs", "spell", "context"), &SpellEngine::get_adjusted_mana_costs);
+    ClassDB::bind_method(D_METHOD("set_verbose_composition", "enabled"), &SpellEngine::set_verbose_composition);
+    ClassDB::bind_method(D_METHOD("get_verbose_composition"), &SpellEngine::get_verbose_composition);
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "verbose_composition"), "set_verbose_composition", "get_verbose_composition");
+
 }

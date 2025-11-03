@@ -20,6 +20,8 @@ private:
     Array assigned_aspects;
     // aspect_id -> Dictionary(scaler_key -> numeric multiplier)
     Dictionary aspect_scalers;
+    // Scaler merge mode used when applying defaults from Aspect resources
+    int scaler_merge_mode = 0; // 0=overwrite,1=add,2=multiply,3=min,4=max
 
 public:
     // Mana accessors
@@ -38,4 +40,6 @@ public:
     void set_aspect_scalers(const Dictionary &s);
     double get_scaler(const String &aspect, const String &key) const;
     void set_scaler(const String &aspect, const String &key, double value);
+    int get_scaler_merge_mode() const;
+    void set_scaler_merge_mode(int mode);
 };

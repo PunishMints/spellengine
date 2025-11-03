@@ -21,6 +21,8 @@ private:
     String description = "";
     // Components owned/ referenced by this aspect
     TypedArray<Ref<SpellComponent>> components;
+    // Optional default scalers to apply when this aspect is assigned to a caster
+    Dictionary default_scalers;
 
 public:
     String get_name() const;
@@ -31,4 +33,7 @@ public:
 
     TypedArray<Ref<SpellComponent>> get_components() const;
     void set_components(const TypedArray<Ref<SpellComponent>> &p_components);
+
+    Dictionary get_default_scalers() const;
+    void set_default_scalers(const Dictionary &p);
 };

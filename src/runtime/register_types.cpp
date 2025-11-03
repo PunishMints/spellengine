@@ -7,6 +7,10 @@
 #include "spellengine/spell_template.hpp"
 #include "spellengine/spell.hpp"
 #include "spellengine/spell_engine.hpp"
+#include "spellengine/aspect_registry.hpp"
+#include "spellengine/editor/aspect_registry_plugin.hpp"
+#include "spellengine/spell_component_registry.hpp"
+#include "spellengine/editor/spell_component_registry_plugin.hpp"
 #include "spellengine/executor_registry.hpp"
 #include "spellengine/executor_base.hpp"
 #include "spellengine/damage_executor.hpp"
@@ -15,11 +19,13 @@
 #include "spellengine/status_effect.hpp"
 #include "spellengine/spell_caster.hpp"
 #include "spellengine/synergy_registry.hpp"
+#include "spellengine/synergy.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
 
@@ -32,6 +38,8 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
     // Register your classes here, so they are available in the Godot editor and engine
     GDREGISTER_CLASS(ItemData)
     GDREGISTER_CLASS(Aspect)
+    GDREGISTER_CLASS(AspectRegistry)
+    GDREGISTER_CLASS(SpellComponentRegistry)
     GDREGISTER_CLASS(SpellComponent)
     GDREGISTER_CLASS(ExecutorRegistry)
     GDREGISTER_CLASS(SpellContext)
@@ -44,20 +52,48 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
     GDREGISTER_CLASS(KnockbackExecutor)
     GDREGISTER_CLASS(StatusEffect)
     GDREGISTER_CLASS(SpellCaster)
+    GDREGISTER_CLASS(Synergy)
     GDREGISTER_CLASS(SynergyRegistry)
 
-    // Create and register default executors
-    ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
-    if (reg) {
-        Ref<IExecutor> d = memnew(DamageExecutor);
-        reg->register_executor("damage_v1", d);
-
-        Ref<IExecutor> dot = memnew(DotExecutor);
-        reg->register_executor("dot_v1", dot);
-
-        Ref<IExecutor> kb = memnew(KnockbackExecutor);
-        reg->register_executor("knockback_v1", kb);
+    // Ensure AspectRegistry singleton exists and attempt to populate from res://aspects
+    AspectRegistry *areg = AspectRegistry::get_singleton();
+    if (areg) {
+        areg->load_all_from_dir("res://aspects", true);
     }
+
+    // Ensure SpellComponentRegistry exists and populate from res://spell_components
+    SpellComponentRegistry *sreg = SpellComponentRegistry::get_singleton();
+    if (sreg) {
+        sreg->load_all_from_dir("res://spell_components", true);
+    }
+
+    // Ensure SynergyRegistry exists and attempt to populate from res://synergies
+    SynergyRegistry *synreg = SynergyRegistry::get_singleton();
+    if (synreg) {
+        int loaded = synreg->load_all_from_dir("res://synergies", true);
+        using namespace godot;
+        UtilityFunctions::print(String("[SpellEngine] loaded synergies: ") + String::num(loaded));
+        Array keys = synreg->get_synergy_keys();
+        for (int ki = 0; ki < keys.size(); ++ki) {
+            Variant kv = keys[ki];
+            String key = (kv.get_type() == Variant::STRING) ? (String)kv : String(kv);
+            Dictionary spec = synreg->get_synergy(key);
+            UtilityFunctions::print(String("  - ") + key);
+            UtilityFunctions::print(spec);
+        }
+    }
+
+    // Register editor plugin (available to add in the editor)
+    // Only register EditorPlugin-derived classes when the EditorPlugin base exists
+    if (ClassDB::class_exists("EditorPlugin")) {
+        GDREGISTER_CLASS(AspectRegistryEditorPlugin)
+        GDREGISTER_CLASS(SpellComponentRegistryEditorPlugin)
+    }
+
+    // Register all executor factories that registered themselves using
+    // REGISTER_EXECUTOR_FACTORY(...) in their cpp files. This removes the need
+    // to hardcode executor ids or instances here.
+    ExecutorRegistry::register_all_factories();
 }
 
 void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {

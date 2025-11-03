@@ -16,4 +16,8 @@ protected:
 
 public:
     virtual void execute(Ref<SpellContext> ctx, Ref<SpellComponent> component, const Dictionary &resolved_params) = 0;
+
+    // Each executor must provide its own id. This allows executors to self-identify
+    // and be auto-registered by the module initialization code.
+    virtual String get_executor_id() const = 0;
 };

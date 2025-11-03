@@ -1,6 +1,7 @@
 #include "spellengine/spell_caster.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
+// Note: aspect defaults are applied during spell composition in SpellEngine, not here.
 
 using namespace godot;
 
@@ -36,6 +37,14 @@ Array SpellCaster::get_assigned_aspects() const {
 
 void SpellCaster::set_assigned_aspects(const Array &a) {
     assigned_aspects = a;
+}
+
+int SpellCaster::get_scaler_merge_mode() const {
+    return scaler_merge_mode;
+}
+
+void SpellCaster::set_scaler_merge_mode(int mode) {
+    scaler_merge_mode = mode;
 }
 
 Dictionary SpellCaster::get_aspect_scalers() const {
@@ -82,7 +91,11 @@ void SpellCaster::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_scaler", "aspect", "key"), &SpellCaster::get_scaler);
     ClassDB::bind_method(D_METHOD("set_scaler", "aspect", "key", "value"), &SpellCaster::set_scaler);
 
+    ClassDB::bind_method(D_METHOD("get_scaler_merge_mode"), &SpellCaster::get_scaler_merge_mode);
+    ClassDB::bind_method(D_METHOD("set_scaler_merge_mode", "mode"), &SpellCaster::set_scaler_merge_mode);
+
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "aspect_mana"), "", "get_assigned_aspects");
     ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "assigned_aspects"), "set_assigned_aspects", "get_assigned_aspects");
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "aspect_scalers"), "set_aspect_scalers", "get_aspect_scalers");
+    ADD_PROPERTY(PropertyInfo(Variant::INT, "scaler_merge_mode"), "set_scaler_merge_mode", "get_scaler_merge_mode");
 }

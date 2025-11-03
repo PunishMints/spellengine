@@ -18,6 +18,9 @@ void Aspect::set_name(const String &p_name) { name = p_name; }
 String Aspect::get_description() const { return description; }
 void Aspect::set_description(const String &p_description) { description = p_description; }
 
+Dictionary Aspect::get_default_scalers() const { return default_scalers; }
+void Aspect::set_default_scalers(const Dictionary &p) { default_scalers = p; }
+
 void Aspect::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_components"), &Aspect::get_components);
     ClassDB::bind_method(D_METHOD("set_components", "components"), &Aspect::set_components);
@@ -30,4 +33,8 @@ void Aspect::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_description"), &Aspect::get_description);
     ClassDB::bind_method(D_METHOD("set_description", "description"), &Aspect::set_description);
     ADD_PROPERTY(PropertyInfo(Variant::STRING, "description"), "set_description", "get_description");
+
+    ClassDB::bind_method(D_METHOD("get_default_scalers"), &Aspect::get_default_scalers);
+    ClassDB::bind_method(D_METHOD("set_default_scalers", "scalers"), &Aspect::set_default_scalers);
+    ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "default_scalers"), "set_default_scalers", "get_default_scalers");
 }

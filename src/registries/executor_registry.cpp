@@ -40,6 +40,31 @@ Ref<IExecutor> ExecutorRegistry::get_executor(const String &id) const {
     return executors[id];
 }
 
+// Implementation of factory registration. We keep factories in a function-static
+// vector to avoid static-initialization-order issues.
+static std::vector<std::function<Ref<IExecutor>()>> &get_executor_factories() {
+    static std::vector<std::function<Ref<IExecutor>()>> factories;
+    return factories;
+}
+
+bool ExecutorRegistry::register_factory_static(const std::function<Ref<IExecutor>()> &factory) {
+    auto &f = get_executor_factories();
+    f.push_back(factory);
+    return true;
+}
+
+void ExecutorRegistry::register_all_factories() {
+    auto &f = get_executor_factories();
+    ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
+    for (size_t i = 0; i < f.size(); ++i) {
+        Ref<IExecutor> inst = f[i]();
+        if (!inst.is_valid()) continue;
+        String id = inst->get_executor_id();
+        if (id.is_empty()) continue;
+        reg->register_executor(id, inst);
+    }
+}
+
 void ExecutorRegistry::_bind_methods() {
     ClassDB::bind_method(D_METHOD("register_executor", "id", "executor"), &ExecutorRegistry::register_executor);
     ClassDB::bind_method(D_METHOD("unregister_executor", "id"), &ExecutorRegistry::unregister_executor);
