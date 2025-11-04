@@ -1,0 +1,18 @@
+[gd_resource type="Synergy" format=3 uid="uid://b5fhe7gfc4aso"]
+
+[resource]
+spec = {
+"component_aspects": ["Water", "Wind"],
+"default_scalers": {
+"amount": 1.15,
+"cast_speed": 1.4
+},
+"extra_executors": [{
+"charge_cost": true,
+"cost": 5.0,
+"executor_id": "knockback_v1",
+"trigger_on_executor": "knockback_v1"
+}],
+"id": "bubble",
+"name": "Bubble"
+}

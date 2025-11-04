@@ -1,0 +1,5 @@
+[gd_resource type="Aspect" format=3 uid="uid://kotj27h6m6wt"]
+
+[resource]
+name = "Healing"
+description = "Healing aspect - reduces range but converts damage into healing."

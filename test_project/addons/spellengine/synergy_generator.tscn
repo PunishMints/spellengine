@@ -1,0 +1,145 @@
+[gd_scene format=3 uid="uid://ctua6or3jgu3r"]
+
+[node name="Synergy Generator" type="VBoxContainer"]
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Main" type="HBoxContainer" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="AspectList" type="ItemList" parent="Main"]
+custom_minimum_size = Vector2(200, 300)
+layout_mode = 2
+select_mode = 2
+allow_rmb_select = true
+
+[node name="Mid" type="VBoxContainer" parent="Main"]
+custom_minimum_size = Vector2(200, 300)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NameRow" type="HBoxContainer" parent="Main/Mid"]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="Main/Mid/NameRow"]
+layout_mode = 2
+text = "Name:"
+
+[node name="NameEdit" type="LineEdit" parent="Main/Mid/NameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="IDRow" type="HBoxContainer" parent="Main/Mid"]
+layout_mode = 2
+
+[node name="IDLabel" type="Label" parent="Main/Mid/IDRow"]
+layout_mode = 2
+text = "ID:"
+
+[node name="IDEdit" type="LineEdit" parent="Main/Mid/IDRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Scalers" type="VBoxContainer" parent="Main/Mid"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScalersLabel" type="Label" parent="Main/Mid/Scalers"]
+layout_mode = 2
+text = "Scalers"
+
+[node name="ScalersList" type="ItemList" parent="Main/Mid/Scalers"]
+clip_contents = false
+layout_mode = 2
+size_flags_vertical = 3
+auto_height = true
+
+[node name="ScalersControls" type="HBoxContainer" parent="Main/Mid/Scalers"]
+layout_mode = 2
+
+[node name="AddScalerButton" type="Button" parent="Main/Mid/Scalers/ScalersControls"]
+layout_mode = 2
+text = "Add Scaler"
+
+[node name="Executors" type="BoxContainer" parent="Main/Mid"]
+layout_mode = 2
+size_flags_vertical = 3
+vertical = true
+
+[node name="ExecutorsLabel" type="Label" parent="Main/Mid/Executors"]
+layout_mode = 2
+text = "Extra Executors"
+
+[node name="ExecutorsList" type="ItemList" parent="Main/Mid/Executors"]
+clip_contents = false
+layout_mode = 2
+size_flags_vertical = 3
+auto_height = true
+
+[node name="ExecButtons" type="HBoxContainer" parent="Main/Mid/Executors"]
+layout_mode = 2
+
+[node name="AddExecButton" type="Button" parent="Main/Mid/Executors/ExecButtons"]
+layout_mode = 2
+text = "Add Executor"
+
+[node name="EditExecButton" type="Button" parent="Main/Mid/Executors/ExecButtons"]
+layout_mode = 2
+text = "Edit Executor"
+
+[node name="RemoveExecButton" type="Button" parent="Main/Mid/Executors/ExecButtons"]
+layout_mode = 2
+text = "Remove Executor"
+
+[node name="PreviewText" type="TextEdit" parent="Main"]
+custom_minimum_size = Vector2(300, 300)
+layout_mode = 2
+wrap_mode = 1
+
+[node name="Buttons" type="BoxContainer" parent="."]
+layout_mode = 2
+vertical = true
+
+[node name="GenerateButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "Generate Proposal"
+
+[node name="SuggestButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "Suggest Defaults"
+
+[node name="SaveButton" type="Button" parent="Buttons"]
+layout_mode = 2
+text = "Save Synergy"
+
+[node name="ExecutorDialog" type="AcceptDialog" parent="."]
+oversampling_override = 1.0
+title = "Edit Executor"
+size = Vector2i(416, 257)
+
+[node name="ExecutorEditor" type="TextEdit" parent="ExecutorDialog"]
+custom_minimum_size = Vector2(400, 200)
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 408.0
+offset_bottom = 208.0
+
+[node name="ScalerDialog" type="AcceptDialog" parent="."]
+oversampling_override = 1.0
+title = "Edit Scaler"
+size = Vector2i(156, 100)
+
+[node name="ScalerEdit" type="BoxContainer" parent="ScalerDialog"]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 148.0
+offset_bottom = 51.0
+
+[node name="ScalerKeyEdit" type="LineEdit" parent="ScalerDialog/ScalerEdit"]
+layout_mode = 2
+placeholder_text = "key"
+
+[node name="ScalerValueEdit" type="LineEdit" parent="ScalerDialog/ScalerEdit"]
+layout_mode = 2
+placeholder_text = "value"

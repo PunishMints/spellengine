@@ -1,0 +1,13 @@
+[gd_resource type="Synergy" format=3 uid="uid://cmws0y04ri0jt"]
+
+[resource]
+spec = {
+"component_aspects": ["water"],
+"default_scalers": {
+"amount": 0.85,
+"cast_time": 0.7
+},
+"extra_executors": [],
+"id": "water",
+"name": "Water"
+}

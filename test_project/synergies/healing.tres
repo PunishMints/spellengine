@@ -1,0 +1,13 @@
+[gd_resource type="Synergy" format=3 uid="uid://synergy-healing"]
+
+[resource]
+spec = {
+"id": "healing",
+"name": "Healing",
+"component_aspects": ["healing"],
+"default_scalers": {
+	"amount": 1.2,
+	"mana_cost": 1.1,
+	"healing": 1.25
+}
+}
