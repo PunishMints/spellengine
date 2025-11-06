@@ -149,10 +149,13 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                 if (si) skey += "+";
                 skey += (String)sorted[si];
             }
+            // normalize for registry lookup
+            String skey_lower = skey.to_lower();
+            UtilityFunctions::print(String("[SpellEngine] execute_spell combined key: '") + skey + "' -> '" + skey_lower + "'");
 
             SynergyRegistry *sreg = SynergyRegistry::get_singleton();
-            if (sreg && sreg->has_synergy(skey)) {
-                Dictionary spec = sreg->get_synergy(skey);
+            if (sreg && sreg->has_synergy(skey_lower)) {
+                Dictionary spec = sreg->get_synergy(skey_lower);
                 if (spec.has("callable")) {
                     Variant cv = spec["callable"];
                     if (cv.get_type() == Variant::CALLABLE) {
@@ -165,7 +168,8 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                         rp_with_cast["cast_id"] = cast_id;
                         args.push_back(rp_with_cast);
                         args.push_back(spec);
-                        args.push_back(skey);
+                        // pass the canonical (lowercased) synergy key
+                        args.push_back(skey_lower);
                         cb.callv(args);
                     } else if (cv.get_type() == Variant::ARRAY) {
                         Array carray = cv;
@@ -180,7 +184,8 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                                 rp_with_cast["cast_id"] = cast_id;
                                 args.push_back(rp_with_cast);
                                 args.push_back(spec);
-                                args.push_back(skey);
+                                // pass the canonical (lowercased) synergy key
+                                args.push_back(skey_lower);
                                 cb.callv(args);
                             }
                         }
@@ -190,16 +195,35 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
                     Variant ev = spec["extra_executors"];
                     if (ev.get_type() == Variant::ARRAY) {
                         Array extras = ev;
+                        UtilityFunctions::print(String("[SpellEngine] synergy '") + skey_lower + "' has extra_executors count=" + String::num(extras.size()));
                         for (int ei = 0; ei < extras.size(); ++ei) {
                             Variant exv = extras[ei];
+                            UtilityFunctions::print(String("[SpellEngine] examining extra_executors[") + String::num(ei) + "]:");
+                            UtilityFunctions::print(exv);
                             if (exv.get_type() != Variant::DICTIONARY) continue;
                             Dictionary exd = exv;
 
                             if (exd.has("trigger_on_executor")) {
                                 Variant tov = exd["trigger_on_executor"];
+                                bool trigger_ok = false;
                                 if (tov.get_type() == Variant::STRING) {
                                     String trig = tov;
-                                    if (trig != comp->get_executor_id()) continue;
+                                    if (trig.to_lower() == comp->get_executor_id().to_lower()) trigger_ok = true;
+                                } else if (tov.get_type() == Variant::ARRAY) {
+                                    Array tarr = tov;
+                                    for (int ti = 0; ti < tarr.size(); ++ti) {
+                                        Variant tv = tarr[ti];
+                                        if (tv.get_type() != Variant::STRING) continue;
+                                        if (((String)tv).to_lower() == comp->get_executor_id().to_lower()) {
+                                            trigger_ok = true; break;
+                                        }
+                                    }
+                                }
+                                if (!trigger_ok) {
+                                    UtilityFunctions::print(String("[SpellEngine] extra_executors entry skipped due to trigger mismatch; expected:"));
+                                    UtilityFunctions::print(exd["trigger_on_executor"]);
+                                    UtilityFunctions::print(String("[SpellEngine] got: ") + comp->get_executor_id());
+                                    continue;
                                 }
                             }
 
@@ -628,9 +652,15 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
             if (i) key += "+";
             key += (String)sorted[i];
         }
+    // normalize combined key to lowercase for registry lookups (synergies are registered with
+    // lowercase keys). When checking component-level synergy_modifiers, accept either the
+    // original-cased key or the lowercased form for backwards compatibility.
+    String key_lower = key.to_lower();
+    UtilityFunctions::print(String("[SpellEngine] combined synergy key built: '") + key + "' -> '" + key_lower + "'");
 
-        if (synergy_mods.size() > 0 && synergy_mods.has(key)) {
+        if (synergy_mods.size() > 0 && (synergy_mods.has(key) || synergy_mods.has(key_lower))) {
             Variant sv = synergy_mods[key];
+            if (!sv.get_type() || sv.get_type() == Variant::NIL) sv = synergy_mods[key_lower];
             if (sv.get_type() == Variant::DICTIONARY) {
                 Dictionary sm = sv;
                 Array sk = sm.keys();
@@ -642,59 +672,65 @@ Dictionary SpellEngine::resolve_component_params(Ref<SpellComponent> component, 
         }
 
         SynergyRegistry *sreg = SynergyRegistry::get_singleton();
-        if (sreg && sreg->has_synergy(key)) {
-            Dictionary spec = sreg->get_synergy(key);
-            // Apply synergy-level default_scalers (scale existing numeric resolved params)
-            // Only apply combined-key synergy scalers when multiple aspects are involved.
-            // Single-aspect defaults are already sourced per-aspect above from the
-            // single-aspect synergy resource.
-            if (aspects_used.size() > 1 && spec.has("default_scalers")) {
-                Variant sv = spec["default_scalers"];
-                if (sv.get_type() == Variant::DICTIONARY) {
-                    Dictionary sdefs = sv;
-                    Array sk = sdefs.keys();
-                    for (int si = 0; si < sk.size(); ++si) {
-                        String skey = sk[si];
-                        Variant sval = sdefs[skey];
-                        if (!(sval.get_type() == Variant::INT || sval.get_type() == Variant::FLOAT)) continue;
-                        double scaler = (double)sval;
-                        // if resolved param exists and is numeric, multiply it
-                        if (resolved_params.has(skey)) {
-                            Variant rv = resolved_params[skey];
-                            if (rv.get_type() == Variant::INT || rv.get_type() == Variant::FLOAT) {
-                                resolved_params[skey] = (double)rv * scaler;
+        if (sreg) {
+            if (sreg->has_synergy(key_lower)) {
+                UtilityFunctions::print(String("[SpellEngine] found synergy in registry for key: ") + key_lower);
+                Dictionary spec = sreg->get_synergy(key_lower);
+                // Apply synergy-level default_scalers (scale existing numeric resolved params)
+                // Only apply combined-key synergy scalers when multiple aspects are involved.
+                // Single-aspect defaults are already sourced per-aspect above from the
+                // single-aspect synergy resource.
+                if (aspects_used.size() > 1 && spec.has("default_scalers")) {
+                    Variant sv = spec["default_scalers"];
+                    if (sv.get_type() == Variant::DICTIONARY) {
+                        Dictionary sdefs = sv;
+                        Array sk = sdefs.keys();
+                        for (int si = 0; si < sk.size(); ++si) {
+                            String skey = sk[si];
+                            Variant sval = sdefs[skey];
+                            if (!(sval.get_type() == Variant::INT || sval.get_type() == Variant::FLOAT)) continue;
+                            double scaler = (double)sval;
+                            // if resolved param exists and is numeric, multiply it
+                            if (resolved_params.has(skey)) {
+                                Variant rv = resolved_params[skey];
+                                if (rv.get_type() == Variant::INT || rv.get_type() == Variant::FLOAT) {
+                                    resolved_params[skey] = (double)rv * scaler;
+                                }
+                            } else {
+                                // If param not present, set it to scaler (applies to params like mana_cost, fallback handled elsewhere)
+                                resolved_params[skey] = scaler;
                             }
-                        } else {
-                            // If param not present, set it to scaler (applies to params like mana_cost, fallback handled elsewhere)
-                            resolved_params[skey] = scaler;
                         }
                     }
                 }
-            }
 
-            if (spec.has("executor_overrides")) {
-                Variant ev = spec["executor_overrides"];
-                if (ev.get_type() == Variant::DICTIONARY) {
-                    Dictionary ed = ev;
-                    String exec_id = component->get_executor_id();
-                    if (ed.has(exec_id)) {
-                        Variant hev = ed[exec_id];
-                        if (hev.get_type() == Variant::DICTIONARY) {
-                            Dictionary hev_d = hev;
-                            if (hev_d.has("params_mods")) {
-                                Variant pmv = hev_d["params_mods"];
-                                if (pmv.get_type() == Variant::DICTIONARY) {
-                                    Dictionary pmd = pmv;
-                                    Array pk = pmd.keys();
-                                    for (int i = 0; i < pk.size(); ++i) {
-                                        String pkey = pk[i];
-                                        resolved_params[pkey] = pmd[pkey];
+                if (spec.has("executor_overrides")) {
+                    Variant ev = spec["executor_overrides"];
+                    if (ev.get_type() == Variant::DICTIONARY) {
+                        Dictionary ed = ev;
+                        String exec_id = component->get_executor_id();
+                        if (ed.has(exec_id)) {
+                            Variant hev = ed[exec_id];
+                            if (hev.get_type() == Variant::DICTIONARY) {
+                                Dictionary hev_d = hev;
+                                if (hev_d.has("params_mods")) {
+                                    Variant pmv = hev_d["params_mods"];
+                                    if (pmv.get_type() == Variant::DICTIONARY) {
+                                        Dictionary pmd = pmv;
+                                        Array pk = pmd.keys();
+                                        for (int i = 0; i < pk.size(); ++i) {
+                                            String pkey = pk[i];
+                                            resolved_params[pkey] = pmd[pkey];
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
+            }
+            else {
+                UtilityFunctions::print(String("[SpellEngine] no combined-key synergy found for: ") + key_lower);
             }
         }
     }

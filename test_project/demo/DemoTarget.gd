@@ -85,8 +85,8 @@ func apply_damage(amount, aspect, metadata = null):
 		var eid = metadata.get("executor_id", "<unknown>")
 		var phase = metadata.get("phase", "")
 		src = " (src=" + str(eid) + ", phase=" + str(phase) + ")"
-	if src != "":
-		print("[DemoTarget]   metadata:" + str(metadata))
+	# if src != "":
+		# print("[DemoTarget]   metadata:" + str(metadata))
 	# Print the new event as its own line prefixed by the spell cast id so logs are easier to scan
 	# print("[DemoTarget] spell_cast=%s +event: %s" % [cast_id, str(ev)])
 
@@ -136,9 +136,9 @@ func apply_knockback_meta(force, speed, area, caster, metadata = null):
 
 	# print a compact debug line and the per-cast event line
 	print("[DemoTarget] %s received knockback force=%s speed=%s area=%s from %s" % [name, force, speed, area, caster_name])
-	if metadata:
-		print("[DemoTarget]   metadata:" + str(metadata))
-	print("[DemoTarget] spell_cast=%s +event: %s" % [cast_id, str(ev)])
+	#if metadata:
+		#print("[DemoTarget]   metadata:" + str(metadata))
+	#print("[DemoTarget] spell_cast=%s +event: %s" % [cast_id, str(ev)])
 
 func apply_heal(amount):
 	health += float(amount)

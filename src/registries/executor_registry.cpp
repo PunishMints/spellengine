@@ -62,6 +62,8 @@ void ExecutorRegistry::register_all_factories() {
         String id = inst->get_executor_id();
         if (id.is_empty()) continue;
         reg->register_executor(id, inst);
+        // Diagnostic trace for factory registration
+        UtilityFunctions::print(String("[spellengine] ExecutorRegistry registered executor_factory -> ") + id);
     }
 }
 
@@ -71,6 +73,9 @@ void ExecutorRegistry::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_executor_ids"), &ExecutorRegistry::get_executor_ids);
     ClassDB::bind_method(D_METHOD("has_executor", "id"), &ExecutorRegistry::has_executor);
     ClassDB::bind_method(D_METHOD("get_executor", "id"), &ExecutorRegistry::get_executor);
+
+    // Note: singleton accessor is not bound here. Editor tooling can read
+    // executor ids/schemas from ProjectSettings (written by module init).
 
     ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "executor_ids"), "", "get_executor_ids");
 }

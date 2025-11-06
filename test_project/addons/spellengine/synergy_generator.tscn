@@ -1,21 +1,46 @@
 [gd_scene format=3 uid="uid://ctua6or3jgu3r"]
 
 [node name="Synergy Generator" type="VBoxContainer"]
-size_flags_horizontal = 3
 size_flags_vertical = 3
 
 [node name="Main" type="HBoxContainer" parent="."]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="AspectList" type="ItemList" parent="Main"]
-custom_minimum_size = Vector2(200, 300)
+[node name="Aspects" type="BoxContainer" parent="Main"]
 layout_mode = 2
+size_flags_horizontal = 3
+vertical = true
+
+[node name="NameLabel" type="Label" parent="Main/Aspects"]
+layout_mode = 2
+text = "Aspects"
+horizontal_alignment = 1
+
+[node name="AspectList" type="ItemList" parent="Main/Aspects"]
+custom_minimum_size = Vector2(0, 250)
+layout_mode = 2
+size_flags_vertical = 3
 select_mode = 2
 allow_rmb_select = true
 
+[node name="AspectButtons" type="BoxContainer" parent="Main/Aspects"]
+layout_mode = 2
+vertical = true
+
+[node name="CreateAspect" type="Button" parent="Main/Aspects/AspectButtons"]
+layout_mode = 2
+text = "Create Aspect"
+
+[node name="EditAspect" type="Button" parent="Main/Aspects/AspectButtons"]
+layout_mode = 2
+text = "Edit Aspect"
+
+[node name="DeleteAspect" type="Button" parent="Main/Aspects/AspectButtons"]
+layout_mode = 2
+text = "Delete Aspect"
+
 [node name="Mid" type="VBoxContainer" parent="Main"]
-custom_minimum_size = Vector2(200, 300)
 layout_mode = 2
 size_flags_horizontal = 3
 
@@ -55,8 +80,9 @@ layout_mode = 2
 size_flags_vertical = 3
 auto_height = true
 
-[node name="ScalersControls" type="HBoxContainer" parent="Main/Mid/Scalers"]
+[node name="ScalersControls" type="BoxContainer" parent="Main/Mid/Scalers"]
 layout_mode = 2
+vertical = true
 
 [node name="AddScalerButton" type="Button" parent="Main/Mid/Scalers/ScalersControls"]
 layout_mode = 2
@@ -77,8 +103,9 @@ layout_mode = 2
 size_flags_vertical = 3
 auto_height = true
 
-[node name="ExecButtons" type="HBoxContainer" parent="Main/Mid/Executors"]
+[node name="ExecButtons" type="BoxContainer" parent="Main/Mid/Executors"]
 layout_mode = 2
+vertical = true
 
 [node name="AddExecButton" type="Button" parent="Main/Mid/Executors/ExecButtons"]
 layout_mode = 2
@@ -92,24 +119,38 @@ text = "Edit Executor"
 layout_mode = 2
 text = "Remove Executor"
 
-[node name="PreviewText" type="TextEdit" parent="Main"]
-custom_minimum_size = Vector2(300, 300)
+[node name="Synergies" type="BoxContainer" parent="Main"]
 layout_mode = 2
-wrap_mode = 1
+size_flags_horizontal = 3
+vertical = true
 
-[node name="Buttons" type="BoxContainer" parent="."]
+[node name="NameLabel" type="Label" parent="Main/Synergies"]
+layout_mode = 2
+text = "Synergies"
+horizontal_alignment = 1
+
+[node name="SynergyList" type="ItemList" parent="Main/Synergies"]
+layout_mode = 2
+size_flags_vertical = 3
+allow_rmb_select = true
+
+[node name="SynergyButtons" type="BoxContainer" parent="Main/Synergies"]
 layout_mode = 2
 vertical = true
 
-[node name="GenerateButton" type="Button" parent="Buttons"]
+[node name="LoadSynergy" type="Button" parent="Main/Synergies/SynergyButtons"]
 layout_mode = 2
-text = "Generate Proposal"
+text = "Load Synergy"
 
-[node name="SuggestButton" type="Button" parent="Buttons"]
+[node name="DeleteSynergy" type="Button" parent="Main/Synergies/SynergyButtons"]
 layout_mode = 2
-text = "Suggest Defaults"
+text = "Delete Synergy"
 
-[node name="SaveButton" type="Button" parent="Buttons"]
+[node name="Controls" type="BoxContainer" parent="."]
+layout_mode = 2
+vertical = true
+
+[node name="SaveButton" type="Button" parent="Controls"]
 layout_mode = 2
 text = "Save Synergy"
 
@@ -118,12 +159,73 @@ oversampling_override = 1.0
 title = "Edit Executor"
 size = Vector2i(416, 257)
 
-[node name="ExecutorEditor" type="TextEdit" parent="ExecutorDialog"]
+[node name="ExecutorEditor" type="VBoxContainer" parent="ExecutorDialog"]
 custom_minimum_size = Vector2(400, 200)
 offset_left = 8.0
 offset_top = 8.0
 offset_right = 408.0
 offset_bottom = 208.0
+
+[node name="ExecIDRow" type="HBoxContainer" parent="ExecutorDialog/ExecutorEditor"]
+layout_mode = 2
+
+[node name="ExecIDLabel" type="Label" parent="ExecutorDialog/ExecutorEditor/ExecIDRow"]
+layout_mode = 2
+text = "Executor:"
+
+[node name="ExecIDOption" type="OptionButton" parent="ExecutorDialog/ExecutorEditor/ExecIDRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="TriggerRow" type="HBoxContainer" parent="ExecutorDialog/ExecutorEditor"]
+layout_mode = 2
+
+[node name="TriggerLabel" type="Label" parent="ExecutorDialog/ExecutorEditor/TriggerRow"]
+layout_mode = 2
+text = "Trigger On:"
+
+[node name="TriggerEdit" type="OptionButton" parent="ExecutorDialog/ExecutorEditor/TriggerRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ParamsLabel" type="Label" parent="ExecutorDialog/ExecutorEditor"]
+layout_mode = 2
+text = "Params"
+
+[node name="ParamsContainer" type="VBoxContainer" parent="ExecutorDialog/ExecutorEditor"]
+layout_mode = 2
+
+[node name="ParamsButtons" type="HBoxContainer" parent="ExecutorDialog/ExecutorEditor"]
+layout_mode = 2
+
+[node name="AddParamButton" type="Button" parent="ExecutorDialog/ExecutorEditor/ParamsButtons"]
+layout_mode = 2
+text = "Add Param"
+
+[node name="ConfirmDialog" type="AcceptDialog" parent="."]
+oversampling_override = 1.0
+title = "Delete Synergy?"
+initial_position = 2
+size = Vector2i(439, 284)
+
+[node name="BoxContainer" type="BoxContainer" parent="ConfirmDialog"]
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 431.0
+offset_bottom = 235.0
+vertical = true
+
+[node name="Label" type="Label" parent="ConfirmDialog/BoxContainer"]
+layout_mode = 2
+text = "Are you sure you want to delete the following synergy?"
+
+[node name="SynergyJSON" type="TextEdit" parent="ConfirmDialog/BoxContainer"]
+custom_minimum_size = Vector2(400, 200)
+layout_mode = 2
+
+[node name="CancelButton" type="Button" parent="ConfirmDialog/BoxContainer"]
+layout_mode = 2
+text = "Cancel"
 
 [node name="ScalerDialog" type="AcceptDialog" parent="."]
 oversampling_override = 1.0

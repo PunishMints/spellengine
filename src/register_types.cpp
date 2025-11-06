@@ -20,6 +20,8 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 
 using namespace godot;
 
@@ -57,6 +59,30 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 
 		Ref<IExecutor> kb = memnew(KnockbackExecutor);
 		reg->register_executor("knockback_v1", kb);
+	}
+
+	// Export executor ids and parameter schemas to ProjectSettings so editor plugins can query them
+	Array exec_ids;
+	Dictionary exec_schemas;
+	if (reg) {
+		Array ids = reg->get_executor_ids();
+		for (int i = 0; i < ids.size(); ++i) {
+			String id = ids[i];
+			exec_ids.append(id);
+			Ref<IExecutor> ex = reg->get_executor(id);
+			if (ex.is_valid()) {
+				Dictionary schema = ex->get_param_schema();
+				exec_schemas[id] = schema;
+			}
+		}
+	}
+	ProjectSettings::get_singleton()->set_setting("spellengine/executor_ids", exec_ids);
+	ProjectSettings::get_singleton()->set_setting("spellengine/executor_schemas", exec_schemas);
+
+	// Diagnostic prints so the editor log shows what the module exported.
+	UtilityFunctions::print(String("[spellengine] exported executor_ids count=") + String::num_int64(exec_ids.size()));
+	for (int i = 0; i < exec_ids.size(); ++i) {
+		UtilityFunctions::print(String("[spellengine] executor_id: ") + String(exec_ids[i]));
 	}
 }
 

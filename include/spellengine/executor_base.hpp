@@ -20,4 +20,10 @@ public:
     // Each executor must provide its own id. This allows executors to self-identify
     // and be auto-registered by the module initialization code.
     virtual String get_executor_id() const = 0;
+
+    // Provide a parameter schema describing executor parameters for editor tooling.
+    // Schema format (Dictionary): key -> { "type": "int|float|string|bool|dict|array", "default": <value>, "desc": "..." }
+    virtual Dictionary get_param_schema() const {
+        return Dictionary();
+    }
 };

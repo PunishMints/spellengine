@@ -1,0 +1,10 @@
+[gd_resource type="Synergy" format=3 uid="uid://blev77omfpntw"]
+
+[resource]
+spec = {
+"component_aspects": ["earth"],
+"default_scalers": {},
+"extra_executors": [],
+"id": "earth",
+"name": "Earth"
+}

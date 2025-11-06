@@ -55,6 +55,29 @@ void KnockbackExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> compo
 
 void KnockbackExecutor::_bind_methods() {}
 
+Dictionary KnockbackExecutor::get_param_schema() const {
+    Dictionary schema;
+    Dictionary e;
+    e["type"] = "float";
+    e["default"] = 400.0;
+    e["desc"] = "Force applied";
+    schema["force"] = e;
+
+    e = Dictionary();
+    e["type"] = "float";
+    e["default"] = 500.0;
+    e["desc"] = "Speed";
+    schema["speed"] = e;
+
+    e = Dictionary();
+    e["type"] = "float";
+    e["default"] = 300.0;
+    e["desc"] = "Area radius";
+    schema["area"] = e;
+
+    return schema;
+}
+
 String KnockbackExecutor::get_executor_id() const {
     return String("knockback_v1");
 }

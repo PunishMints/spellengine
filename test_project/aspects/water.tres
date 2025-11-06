@@ -1,5 +1,9 @@
-[gd_resource type="Aspect" format=3]
+[gd_resource type="Aspect" format=3 uid="uid://q08ublt2voof"]
 
 [resource]
 name = "Water"
 description = "Elemental water aspect - decreases damage and cast time for spells."
+default_scalers = {
+"amount": 0.85,
+"cast_time": 0.7
+}

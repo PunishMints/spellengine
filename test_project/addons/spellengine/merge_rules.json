@@ -1,0 +1,10 @@
+{
+  "mana_cost": {
+    "mode": "mana_penalty",
+    "penalty_per_extra_aspect": 0.1,
+    "base": "average"
+  },
+  "amount": {
+    "mode": "average"
+  }
+}

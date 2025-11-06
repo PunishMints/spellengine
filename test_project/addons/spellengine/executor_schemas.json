@@ -1,0 +1,20 @@
+{
+  "executor_ids": ["damage_v1", "dot_v1", "knockback_v1"],
+  "executor_schemas": {
+    "damage_v1": {
+      "amount": { "type": "float", "default": 0.0, "desc": "Amount of damage to apply" },
+      "aspect": { "type": "string", "default": "", "desc": "Aspect label (optional)" }
+    },
+    "dot_v1": {
+      "amount_per_tick": { "type": "float", "default": 0.0, "desc": "Amount per tick" },
+      "tick_interval": { "type": "float", "default": 1.0, "desc": "Tick interval (seconds)" },
+      "duration": { "type": "float", "default": 5.0, "desc": "Duration (seconds)" },
+      "aspect": { "type": "string", "default": "", "desc": "Aspect label (optional)" }
+    },
+    "knockback_v1": {
+      "force": { "type": "float", "default": 400.0, "desc": "Force applied" },
+      "speed": { "type": "float", "default": 500.0, "desc": "Speed" },
+      "area": { "type": "float", "default": 300.0, "desc": "Area radius" }
+    }
+  }
+}

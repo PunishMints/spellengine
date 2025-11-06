@@ -1,13 +1,14 @@
-[gd_resource type="Synergy" format=3 uid="uid://synergy-wind"]
+[gd_resource type="Synergy" format=3 uid="uid://colhqes37bmv5"]
 
 [resource]
 spec = {
-"id": "wind",
-"name": "Wind",
 "component_aspects": ["wind"],
 "default_scalers": {
-    "force": 1.8,
-    "speed": 1.5,
-    "mana_cost": 0.8
-}
+"force": 1.8,
+"mana_cost": 0.8,
+"speed": 1.5
+},
+"extra_executors": [],
+"id": "wind",
+"name": "Wind"
 }

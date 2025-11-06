@@ -46,11 +46,28 @@ void DamageExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> componen
 }
 
 void DamageExecutor::_bind_methods() {
-    // No additional bindings required for now
+    ClassDB::bind_method(D_METHOD("get_param_schema"), &DamageExecutor::get_param_schema);
 }
 
 String DamageExecutor::get_executor_id() const {
     return String("damage_v1");
+}
+
+Dictionary DamageExecutor::get_param_schema() const {
+    Dictionary schema;
+    Dictionary e;
+    e["type"] = "float";
+    e["default"] = 0.0;
+    e["desc"] = "Amount of damage to apply";
+    schema["amount"] = e;
+
+    e = Dictionary();
+    e["type"] = "string";
+    e["default"] = String("");
+    e["desc"] = "Aspect label (optional)";
+    schema["aspect"] = e;
+
+    return schema;
 }
 
 // Register factory for automatic registration at module init

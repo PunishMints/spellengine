@@ -50,10 +50,40 @@ void DotExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> component, 
 }
 
 void DotExecutor::_bind_methods() {
+    ClassDB::bind_method(D_METHOD("get_param_schema"), &DotExecutor::get_param_schema);
 }
 
 String DotExecutor::get_executor_id() const {
     return String("dot_v1");
+}
+
+Dictionary DotExecutor::get_param_schema() const {
+    Dictionary schema;
+    Dictionary e;
+    e["type"] = "float";
+    e["default"] = 0.0;
+    e["desc"] = "Amount per tick";
+    schema["amount_per_tick"] = e;
+
+    e = Dictionary();
+    e["type"] = "float";
+    e["default"] = 1.0;
+    e["desc"] = "Tick interval (seconds)";
+    schema["tick_interval"] = e;
+
+    e = Dictionary();
+    e["type"] = "float";
+    e["default"] = 5.0;
+    e["desc"] = "Duration (seconds)";
+    schema["duration"] = e;
+
+    e = Dictionary();
+    e["type"] = "string";
+    e["default"] = String("");
+    e["desc"] = "Aspect label (optional)";
+    schema["aspect"] = e;
+
+    return schema;
 }
 
 // Register factory for automatic registration at module init

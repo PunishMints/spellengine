@@ -11,8 +11,8 @@ func _ready():
 	caster.set_mana("wind", 100.0)
 	# also give some fire mana so fire-based components can be paid in this demo
 	caster.set_mana("fire", 100.0)
-	caster.set_scaler("healing", "mana_cost", 0.5)
-	caster.set_scaler("healing", "area", 2)
+	caster.set_mana("water", 100.0)
+
 
 
 	# scale fire damage and mana cost by 1.5x from this caster
@@ -29,7 +29,7 @@ func _ready():
 	damage_comp.set_executor_id("damage_v1")
 	damage_comp.set_cost(20.0)
 	damage_comp.set_base_params({"amount": 50.0})
-	damage_comp.set_aspects_contributions({"fire": 1})
+	damage_comp.set_aspects_contributions({"water": 1})
 
 
 	# Create a knockback component that is split between wind and healing
@@ -37,7 +37,7 @@ func _ready():
 	knock_comp.set_executor_id("knockback_v1")
 	knock_comp.set_cost(10.0)
 	knock_comp.set_base_params({"force": 400.0, "speed": 500.0, "area": 10})
-	knock_comp.set_aspects_contributions({"wind": 0.5, "healing": 0.5})
+	knock_comp.set_aspects_contributions({"water": 0.5, "wind": 0.5})
 
 
 	# Assemble Spell and execute it via SpellEngine

@@ -3,3 +3,8 @@
 [resource]
 name = "Healing"
 description = "Healing aspect - reduces range but converts damage into healing."
+default_scalers = {
+"amount": 1.2,
+"healing": 1.25,
+"mana_cost": 1.1
+}

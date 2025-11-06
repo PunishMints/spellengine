@@ -69,6 +69,31 @@ bool SynergyRegistry::register_from_path(const String &key, const String &resour
         UtilityFunctions::print(String("SynergyRegistry: loaded Synergy resource spec from: ") + resource_path);
         UtilityFunctions::print(spec);
         register_synergy(key.to_lower(), spec);
+        // If the Synergy resource declares component_aspects, also register an
+        // alias key formed by sorting and lowercasing the aspect names joined by '+'.
+        if (spec.has("component_aspects")) {
+            Variant cav = spec["component_aspects"];
+            if (cav.get_type() == Variant::ARRAY) {
+                Array carr = cav;
+                Array lower_aspects;
+                for (int i = 0; i < carr.size(); ++i) {
+                    Variant av = carr[i];
+                    if (av.get_type() != Variant::STRING) continue;
+                    String as = ((String)av).to_lower();
+                    lower_aspects.push_back(as);
+                }
+                lower_aspects.sort();
+                String alias = "";
+                for (int i = 0; i < lower_aspects.size(); ++i) {
+                    if (i) alias += "+";
+                    alias += (String)lower_aspects[i];
+                }
+                if (alias != String() && !has_synergy(alias)) {
+                    register_synergy(alias, spec);
+                    UtilityFunctions::print(String("SynergyRegistry: registered alias key for resource '") + key + "' -> '" + alias + "'");
+                }
+            }
+        }
         return true;
     }
 
@@ -80,6 +105,31 @@ bool SynergyRegistry::register_from_path(const String &key, const String &resour
     if (spec.get_type() == Variant::DICTIONARY) {
         // store synergies keyed by lowercase basename for predictable lookups
         register_synergy(key.to_lower(), spec);
+        // Also register alias key based on declared component_aspects (if any)
+        Dictionary sdict = spec;
+        if (sdict.has("component_aspects")) {
+            Variant cav = sdict["component_aspects"];
+            if (cav.get_type() == Variant::ARRAY) {
+                Array carr = cav;
+                Array lower_aspects;
+                for (int i = 0; i < carr.size(); ++i) {
+                    Variant av = carr[i];
+                    if (av.get_type() != Variant::STRING) continue;
+                    String as = ((String)av).to_lower();
+                    lower_aspects.push_back(as);
+                }
+                lower_aspects.sort();
+                String alias = "";
+                for (int i = 0; i < lower_aspects.size(); ++i) {
+                    if (i) alias += "+";
+                    alias += (String)lower_aspects[i];
+                }
+                if (alias != String() && !has_synergy(alias)) {
+                    register_synergy(alias, spec);
+                    UtilityFunctions::print(String("SynergyRegistry: registered alias key for resource '") + key + "' -> '" + alias + "'");
+                }
+            }
+        }
         return true;
     }
     UtilityFunctions::print(String("SynergyRegistry: resource did not contain 'spec' dict: ") + resource_path);

@@ -155,14 +155,14 @@ func fire_synergy_extra_executor(engine:SpellEngine) -> Dictionary:
 	add_child(caster)
 
 	var t1 = preload("res://demo/DemoTarget.gd").new()
-	t1.name = "TestTarget"
+	t1.name = "FireTarget"
 	add_child(t1)
 
 	var comp = SpellComponent.new()
 	comp.set_executor_id("damage_v1")
 	comp.set_cost(5.0)
 	comp.set_base_params({"amount": 10.0})
-	comp.set_aspects_contributions({"fire": 0.5, "wind": 0.5})
+	comp.set_aspects_contributions({"fire": 1})
 
 	var spell = Spell.new()
 	spell.set_components([comp])
@@ -184,13 +184,13 @@ func fire_synergy_extra_executor(engine:SpellEngine) -> Dictionary:
 
 	# Print each recorded damage tick for debugging
 	var dlog = t1.get_damage_log()
-	print("[Test] Damage log for " + t1.name + ":")
+	# print("[Test] Damage log for " + t1.name + ":")
 	for e in dlog:
 		# e contains {"index": int, "amount": float, "aspect": aspect}
 		var idx = e.get("index", -1)
 		var amt = e.get("amount", 0.0)
 		var asp = e.get("aspect", "")
-		print("[Test]  tick %s -> amount=%s aspect=%s" % [str(idx), str(amt), str(asp)])
+		# print("[Test]  tick %s -> amount=%s aspect=%s" % [str(idx), str(amt), str(asp)])
 
 	var final_mana = caster.get_mana("fire")
 	var final_health = t1.health
@@ -214,6 +214,39 @@ func fire_synergy_extra_executor(engine:SpellEngine) -> Dictionary:
 		return {"ok": true}
 	else:
 		return {"ok": false, "expected_damage": expected_total_damage, "got_damage": damage_taken, "expected_mana": expected_total_mana_spent, "got_mana": mana_spent}
+
+func bubble_synergy_order_insensitive(engine:SpellEngine) -> Dictionary:
+	# Ensure bubble synergy (Water+Wind) matches regardless of ordering/case and triggers extra executor
+	var caster = SpellCaster.new()
+	caster.set_assigned_aspects(["wind", "water"]) # order intentionally wind,water
+	caster.set_mana("water", 100.0)
+	caster.set_mana("wind", 100.0)
+	add_child(caster)
+
+	var t1 = preload("res://demo/DemoTarget.gd").new()
+	t1.name = "BubbleTarget"
+	add_child(t1)
+
+	var comp = SpellComponent.new()
+	comp.set_executor_id("knockback_v1")
+	comp.set_cost(10.0)
+	comp.set_base_params({})
+	# contributions in different order/case than resource definition
+	comp.set_aspects_contributions({"water": 0.5, "wind": 0.5})
+
+	var spell = Spell.new()
+	spell.set_components([comp])
+
+	var ctx = SpellContext.new()
+	ctx.set_caster(caster)
+	ctx.set_targets([t1])
+	ctx.derive_and_set_aspects(spell)
+
+	# Execute and wait for the DOT extra executor (bubble.tres triggers dot_v1 on knockback_v1)
+	engine.execute_spell(spell, ctx)
+	await t1.dot_complete
+	# If we received dot_complete, the extra executor executed — pass.
+	return {"ok": true}
 
 func run_all_tests() -> Dictionary:
 	var results = {"passed": [], "failed": []}
@@ -255,5 +288,10 @@ func run_all_tests() -> Dictionary:
 	var engine_fire = SpellEngine.new()
 	var cb_fire = Callable(self, "fire_synergy_extra_executor").bind(engine_fire)
 	run_case(results, "fire_synergy_extra_executor", cb_fire)
+
+	# 7) Bubble synergy order-insensitive test: trigger extra executor via knockback
+	var engine_bubble = SpellEngine.new()
+	var cb_bubble = Callable(self, "bubble_synergy_order_insensitive").bind(engine_bubble)
+	run_case(results, "bubble_synergy_order_insensitive", cb_bubble)
 
 	return results

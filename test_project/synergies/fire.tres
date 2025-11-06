@@ -1,21 +1,24 @@
-[gd_resource type="Synergy" format=3 uid="uid://synergy-fire"]
+[gd_resource type="Synergy" format=3 uid="uid://ysmgnowvwq5f"]
 
 [resource]
 spec = {
-"id": "fire",
-"name": "Fire",
 "component_aspects": ["fire"],
 "default_scalers": {
-	"amount": 1.3,
-	"mana_cost": 1.3
+"amount": 1.3,
+"mana_cost": 1.3
 },
-"extra_executors": [
-	{
-		"executor_id": "dot_v1",
-		"trigger_on_executor": "damage_v1",
-		"charge_cost": true,
-		"cost": 5.0,
-        "params_mods": {"aspect": "fire", "amount_per_tick": 2.0, "tick_interval": 0.1, "duration": 0.3}
-	}
-]
+"extra_executors": [{
+    "charge_cost": true,
+    "cost": 5.0,
+    "executor_id": "dot_v1",
+    "params_mods": {
+        "amount_per_tick": 2.0,
+        "aspect": "fire",
+        "duration": 0.3,
+        "tick_interval": 0.1
+    },
+    "trigger_on_executor": "damage_v1"
+}],
+"id": "fire",
+"name": "Fire"
 }

@@ -1,0 +1,10 @@
+[gd_resource type="Synergy" format=3 uid="uid://bqdta3f6aliiy"]
+
+[resource]
+spec = {
+"component_aspects": ["Rat"],
+"default_scalers": {},
+"extra_executors": [],
+"id": "rat",
+"name": "Rat"
+}

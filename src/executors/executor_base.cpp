@@ -4,5 +4,6 @@
 using namespace godot;
 
 void IExecutor::_bind_methods() {
-    // Base executor has no bound methods; derived classes may bind their own
+    // Expose parameter schema query to GDScript for editor tooling
+    ClassDB::bind_method(D_METHOD("get_param_schema"), &IExecutor::get_param_schema);
 }

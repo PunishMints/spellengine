@@ -18,7 +18,6 @@ func _ready():
 		else:
 			cls = state.get_class()
 		if cls == "GDScriptFunctionState":
-			await state
 			r2 = state.get_result()
 	results.passed += r2.passed
 	results.failed += r2.failed

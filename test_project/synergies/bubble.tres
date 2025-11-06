@@ -2,15 +2,19 @@
 
 [resource]
 spec = {
-"component_aspects": ["Water", "Wind"],
+"component_aspects": ["water", "wind"],
 "default_scalers": {
-"amount": 1.15,
-"cast_speed": 1.4
+"amount": 0.85,
+"cast_time": 0.7,
+"force": 1.8,
+"mana_cost": 0.8800000000000001,
+"speed": 1.5
 },
 "extra_executors": [{
-"charge_cost": true,
-"cost": 5.0,
+"area": 300.0,
 "executor_id": "knockback_v1",
+"force": 400.0,
+"speed": 500.0,
 "trigger_on_executor": "knockback_v1"
 }],
 "id": "bubble",
