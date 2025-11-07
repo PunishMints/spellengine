@@ -66,6 +66,17 @@ text = "ID:"
 layout_mode = 2
 size_flags_horizontal = 3
 
+[node name="ColorRow" type="HBoxContainer" parent="Main/Mid"]
+layout_mode = 2
+
+[node name="ColorLabel" type="Label" parent="Main/Mid/ColorRow"]
+layout_mode = 2
+text = "Color:"
+
+[node name="ColorPicker" type="ColorPickerButton" parent="Main/Mid/ColorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="Scalers" type="VBoxContainer" parent="Main/Mid"]
 layout_mode = 2
 size_flags_vertical = 3
@@ -245,3 +256,73 @@ placeholder_text = "key"
 [node name="ScalerValueEdit" type="LineEdit" parent="ScalerDialog/ScalerEdit"]
 layout_mode = 2
 placeholder_text = "value"
+
+[node name="AspectDialog" type="AcceptDialog" parent="."]
+oversampling_override = 1.0
+title = "Create / Edit Aspect"
+size = Vector2i(420, 360)
+
+[node name="AspectEditor" type="VBoxContainer" parent="AspectDialog"]
+custom_minimum_size = Vector2(400, 300)
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 392.0
+offset_bottom = 292.0
+
+[node name="IDRow" type="HBoxContainer" parent="AspectDialog/AspectEditor"]
+layout_mode = 2
+
+[node name="IDLabel" type="Label" parent="AspectDialog/AspectEditor/IDRow"]
+layout_mode = 2
+text = "ID:"
+
+[node name="IDEdit" type="LineEdit" parent="AspectDialog/AspectEditor/IDRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="NameRow" type="HBoxContainer" parent="AspectDialog/AspectEditor"]
+layout_mode = 2
+
+[node name="NameLabel" type="Label" parent="AspectDialog/AspectEditor/NameRow"]
+layout_mode = 2
+text = "Name:"
+
+[node name="NameEdit" type="LineEdit" parent="AspectDialog/AspectEditor/NameRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ColorRow" type="HBoxContainer" parent="AspectDialog/AspectEditor"]
+layout_mode = 2
+
+[node name="ColorLabel" type="Label" parent="AspectDialog/AspectEditor/ColorRow"]
+layout_mode = 2
+text = "Color:"
+
+[node name="ColorPicker" type="ColorPickerButton" parent="AspectDialog/AspectEditor/ColorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ScalersLabel" type="Label" parent="AspectDialog/AspectEditor"]
+layout_mode = 2
+text = "Default Scalers"
+
+[node name="ScalersList" type="ItemList" parent="AspectDialog/AspectEditor"]
+custom_minimum_size = Vector2(0, 120)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="ScalersControls" type="BoxContainer" parent="AspectDialog/AspectEditor"]
+layout_mode = 2
+vertical = true
+
+[node name="AddScalerButton" type="Button" parent="AspectDialog/AspectEditor/ScalersControls"]
+layout_mode = 2
+text = "Add Scaler"
+
+[node name="EditScalerButton" type="Button" parent="AspectDialog/AspectEditor/ScalersControls"]
+layout_mode = 2
+text = "Edit Scaler"
+
+[node name="RemoveScalerButton" type="Button" parent="AspectDialog/AspectEditor/ScalersControls"]
+layout_mode = 2
+text = "Remove Scaler"

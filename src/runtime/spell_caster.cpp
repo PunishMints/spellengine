@@ -39,6 +39,14 @@ void SpellCaster::set_assigned_aspects(const Array &a) {
     assigned_aspects = a;
 }
 
+Dictionary SpellCaster::get_aspect_mana() const {
+    return aspect_mana;
+}
+
+void SpellCaster::set_aspect_mana(const Dictionary &m) {
+    aspect_mana = m;
+}
+
 int SpellCaster::get_scaler_merge_mode() const {
     return scaler_merge_mode;
 }
@@ -94,7 +102,10 @@ void SpellCaster::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_scaler_merge_mode"), &SpellCaster::get_scaler_merge_mode);
     ClassDB::bind_method(D_METHOD("set_scaler_merge_mode", "mode"), &SpellCaster::set_scaler_merge_mode);
 
-    ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "aspect_mana"), "", "get_assigned_aspects");
+    ClassDB::bind_method(D_METHOD("get_aspect_mana"), &SpellCaster::get_aspect_mana);
+    ClassDB::bind_method(D_METHOD("set_aspect_mana", "m"), &SpellCaster::set_aspect_mana);
+
+    ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "aspect_mana"), "set_aspect_mana", "get_aspect_mana");
     ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "assigned_aspects"), "set_assigned_aspects", "get_assigned_aspects");
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "aspect_scalers"), "set_aspect_scalers", "get_aspect_scalers");
     ADD_PROPERTY(PropertyInfo(Variant::INT, "scaler_merge_mode"), "set_scaler_merge_mode", "get_scaler_merge_mode");

@@ -1,6 +1,7 @@
-[gd_scene load_steps=7 format=3 uid="uid://bed2mcnygtah4"]
+[gd_scene load_steps=8 format=3 uid="uid://bed2mcnygtah4"]
 
-[ext_resource type="PackedScene" uid="uid://c5lcci8e8qir8" path="res://demo/character_controller.tscn" id="1"]
+[ext_resource type="PackedScene" uid="uid://c5lcci8e8qir8" path="res://demo/scenes/demo_character.tscn" id="1"]
+[ext_resource type="PackedScene" uid="uid://dsj36yv5wiqt3" path="res://demo/scenes/ui/demo_ui.tscn" id="2_aiqcw"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_j8vd8"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -37,3 +38,5 @@ shape = SubResource("BoxShape_1")
 
 [node name="DemoCharacter" parent="." instance=ExtResource("1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.55196166, 0.77156395, -0.61248213)
+
+[node name="DemoUi" parent="." instance=ExtResource("2_aiqcw")]

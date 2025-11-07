@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/color.hpp>
 #include "spellengine/spell_component.hpp"
 
 using namespace godot;
@@ -19,6 +20,8 @@ protected:
 private:
     String name = "New Aspect";
     String description = "";
+    // Color for UI/visualization
+    Color color = Color(1, 1, 1, 1);
     // Components owned/ referenced by this aspect
     TypedArray<Ref<SpellComponent>> components;
     // Optional default scalers to apply when this aspect is assigned to a caster
@@ -36,4 +39,7 @@ public:
 
     Dictionary get_default_scalers() const;
     void set_default_scalers(const Dictionary &p);
+
+    Color get_color() const;
+    void set_color(const Color &p_color);
 };

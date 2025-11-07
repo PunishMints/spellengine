@@ -2,6 +2,7 @@
 
 [resource]
 spec = {
+"color": Color(0.827451, 0.79607844, 0.3529412, 1),
 "component_aspects": ["healing"],
 "default_scalers": {
 "amount": 1.2,

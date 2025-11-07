@@ -154,7 +154,7 @@ func fire_synergy_extra_executor(engine:SpellEngine) -> Dictionary:
 
 	add_child(caster)
 
-	var t1 = preload("res://demo/DemoTarget.gd").new()
+	var t1 = preload("res://demo/scripts/DemoTarget.gd").new()
 	t1.name = "FireTarget"
 	add_child(t1)
 
@@ -223,7 +223,7 @@ func bubble_synergy_order_insensitive(engine:SpellEngine) -> Dictionary:
 	caster.set_mana("wind", 100.0)
 	add_child(caster)
 
-	var t1 = preload("res://demo/DemoTarget.gd").new()
+	var t1 = preload("res://demo/scripts/DemoTarget.gd").new()
 	t1.name = "BubbleTarget"
 	add_child(t1)
 

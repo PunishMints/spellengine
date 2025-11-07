@@ -30,6 +30,9 @@ public:
     void add_mana(const String &aspect, double amount);
     bool can_deduct(const String &aspect, double amount) const;
     bool deduct_mana(const String &aspect, double amount);
+    // Whole-map accessors (for serialization / editor)
+    Dictionary get_aspect_mana() const;
+    void set_aspect_mana(const Dictionary &m);
 
     // Assigned aspects
     Array get_assigned_aspects() const;

@@ -1,0 +1,5 @@
+[gd_resource type="Aspect" load_steps=0 format=3 uid="uid://mxcxubc3c7au"]
+
+[resource]
+name = "Earth"
+description = "Elemental earth aspect - standard."

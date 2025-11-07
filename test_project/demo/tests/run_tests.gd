@@ -5,7 +5,7 @@ func _ready():
 	var results = {"passed": [], "failed": []}
 
 	# run extended suite
-	var suite2 = preload("res://tests/test_spell_engine_ext.gd")
+	var suite2 = preload("res://demo/tests/test_spell_engine_ext.gd")
 	var t2 = suite2.new()
 	add_child(t2)
 	var state = t2.run_all_tests()

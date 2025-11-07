@@ -38,6 +38,7 @@ var pending_delete_path := ""
 var aspect_dialog
 var aspect_dialog_id_edit
 var aspect_dialog_name_edit
+var aspect_dialog_color
 var editing_aspect_path := ""
 var aspect_scalers_data = []
 var aspect_scalers_list
@@ -46,6 +47,7 @@ var _aspect_scaler_mode := false
 var aspect_scalers_editing_index = -1
 var aspect_scaler_catalog = {}
 var aspect_defaults_panel
+var color_picker
 
 var executors_data = []
 var editing_exec_index = -1
@@ -81,6 +83,8 @@ func _enter_tree():
 	# Mid-area editor nodes
 	id_edit = panel.get_node("Main/Mid/IDRow/IDEdit")
 	name_edit = panel.get_node("Main/Mid/NameRow/NameEdit")
+	# synergy override color picker (optional in scene)
+	color_picker = panel.get_node_or_null("Main/Mid/ColorRow/ColorPicker")
 	scalers_list = panel.get_node("Main/Mid/Scalers/ScalersList")
 	add_scaler_button = panel.get_node("Main/Mid/Scalers/ScalersControls/AddScalerButton")
 	# create Edit/Remove scaler buttons dynamically for parity with executors
@@ -276,27 +280,27 @@ func _ensure_execs_loaded() -> void:
 		execs_populated = exec_id_option.get_item_count() > 0
 		print("[SynergyPlugin] loaded executor ids from ProjectSettings: ", exec_id_option.get_item_count())
 		_populate_trigger_dropdown()
-		return
 	else:
 		# ProjectSettings didn't have executor ids; try a bundled JSON fallback in the addon
 		var fb_path = "res://addons/spellengine/executor_schemas.json"
-		var f = FileAccess.open(fb_path, FileAccess.ModeFlags.READ)
-		if f:
-			var txt = f.get_as_text()
-			f.close()
-			var pr = SynergyHelpers.parse_json_text(txt)
-			if pr.has("error") and pr["error"] == OK:
-				var data = pr.get("result", null)
+		if FileAccess.file_exists(fb_path):
+			var f = FileAccess.open(fb_path, FileAccess.ModeFlags.READ)
+			if f:
+				var txt = f.get_as_text()
+				f.close()
+				var pr = SynergyHelpers.parse_json_text(txt)
+				var data = pr.get("result", null) if typeof(pr) == TYPE_DICTIONARY else null
 				if typeof(data) == TYPE_DICTIONARY:
 					if data.has("executor_ids") and typeof(data["executor_ids"]) == TYPE_ARRAY:
 						exec_id_option.clear()
 						for i in data["executor_ids"]:
 							exec_id_option.add_item(str(i))
-						if data.has("executor_schemas") and typeof(data["executor_schemas"]) == TYPE_DICTIONARY:
-							exec_schemas = data["executor_schemas"]
-							execs_populated = exec_id_option.get_item_count() > 0
-							print("[SynergyPlugin] loaded executor ids from bundled fallback JSON: ", exec_id_option.get_item_count())
-							_populate_trigger_dropdown()
+					if data.has("executor_schemas") and typeof(data["executor_schemas"]) == TYPE_DICTIONARY:
+						exec_schemas = data["executor_schemas"]
+					execs_populated = exec_id_option.get_item_count() > 0
+					if execs_populated:
+						print("[SynergyPlugin] loaded executor ids from bundled fallback JSON: ", exec_id_option.get_item_count())
+						_populate_trigger_dropdown()
 						return
 		# fallback failed; we'll wait and retry later
 		return
@@ -322,7 +326,7 @@ func _refresh_aspect_list():
 		if not dir.current_is_dir():
 			if fname.ends_with(".tres") or fname.ends_with(".res"):
 				var path = "res://aspects/" + fname
-				var res = ResourceLoader.load(path)
+				var res = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 				if res:
 					var label = fname
 					# try to show aspect name if available
@@ -632,7 +636,7 @@ func _select_aspects_for_spec(spec:Dictionary) -> void:
 
 	for i in range(aspect_list.get_item_count()):
 		var path = aspect_list.get_item_metadata(i)
-		var r = ResourceLoader.load(path)
+		var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 		var name_variant = ""
 		# file base without extension
 		var file_variant = path.get_file().split('.')[0]
@@ -640,7 +644,7 @@ func _select_aspects_for_spec(spec:Dictionary) -> void:
 		if r:
 			if r.has_method('get_name'):
 				name_variant = str(r.get_name())
-			elif r.has('name'):
+			elif r.get('name') != null:
 				name_variant = str(r.get('name'))
 		# normalize for comparison
 		var name_l = name_variant.strip_edges().to_lower()
@@ -717,11 +721,11 @@ func _find_existing_synergy_for_components(comp_aspects:Array) -> String:
 func _load_spec_from_path(path:String) -> Variant:
 	# Load a synergy spec from .tres/.res resource or .json file. Returns Dictionary or null.
 	if path.ends_with('.tres') or path.ends_with('.res'):
-		var r = ResourceLoader.load(path)
+		var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 		if r:
 			if r.has_method('get_spec'):
 				return r.get_spec()
-			elif r.has('spec'):
+			elif r.get('spec') != null:
 				return r.get('spec')
 			else:
 				# try to access properties via to_dict if available
@@ -743,7 +747,7 @@ func _load_spec_from_path(path:String) -> Variant:
 func _populate_scalers_from_paths(paths:Array, comp_names:Array) -> void:
 	var gathered = {}
 	for p in paths:
-		var r = ResourceLoader.load(p)
+		var r = ResourceLoader.load(p, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 		_add_scalers_from_res(r, gathered)
 	var defaults = {}
 	if gathered.size() > 0:
@@ -781,7 +785,7 @@ func _get_paths_for_component_names(comp_names:Array) -> Array:
 		var path = aspect_list.get_item_metadata(i)
 		if not path:
 			continue
-		var r = ResourceLoader.load(path)
+		var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 		var label = ""
 		if r and r.has_method('get_name'):
 			label = str(r.get_name())
@@ -807,7 +811,7 @@ func _set_component_aspects_from_paths(paths:Array) -> void:
 	# Build component_aspects names from resource paths and store on current_spec
 	var comp_aspects = []
 	for p in paths:
-		var r = ResourceLoader.load(p)
+		var r = ResourceLoader.load(p, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 		if r and r.has_method("get_name"):
 			comp_aspects.append(r.get_name())
 		else:
@@ -880,6 +884,56 @@ func _on_generate_proposal():
 		"extra_executors": []
 	}
 
+	# Auto-populate a display color by averaging component aspect colors (blend for 2 aspects)
+	# Use the already-resolved `paths` (from component names) to avoid mismatch when
+	# comp_names and comp_aspects resolution differs (fixes single-aspect proposals).
+	var paths_for_color = paths
+	if paths_for_color.size() > 0:
+		var cols = []
+		for pcol in paths_for_color:
+			var rcol = ResourceLoader.load(pcol, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
+			if rcol:
+				var c = null
+				if rcol.has_method('get_color'):
+					c = rcol.get_color()
+				elif rcol.get('color') != null:
+					c = rcol.get('color')
+				# Color values report as TYPE_COLOR
+				if typeof(c) == TYPE_COLOR:
+					cols.append(c)
+		# average colors
+		if cols.size() > 0:
+			var sr = 0.0
+			var sg = 0.0
+			var sb = 0.0
+			var sa = 0.0
+			for cc in cols:
+				sr += cc.r
+				sg += cc.g
+				sb += cc.b
+				sa += cc.a
+			var n = float(cols.size())
+			var avg = Color(sr / n, sg / n, sb / n, sa / n)
+			spec["color"] = avg
+			print('[SynergyPlugin] autopopulated synergy color=', avg)
+
+		# Also compute default scalers from the resolved aspect paths so
+		# single-aspect proposals get reasonable defaults immediately.
+		# This duplicates the logic in _populate_scalers_from_paths but
+		# keeps the change local and avoids mutating global current_spec
+		# before we've finalized the generated proposal.
+		var gathered = {}
+		for p in paths:
+			var r = ResourceLoader.load(p, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
+			if r and r.has_method("get_name"):
+				comp_aspects.append(r.get_name())
+			var defaults_local = {}
+			for k in gathered.keys():
+				defaults_local[k] = MergeRules.apply_rule(k, gathered[k], comp_names.size())
+			# attach to the generated spec so the Mid UI will show them
+			spec["default_scalers"] = defaults_local
+			print('[SynergyPlugin] autopopulated default_scalers=', defaults_local)
+
 
 	# If a composed synergy already exists for these components, load it instead
 	print('[SynergyPlugin] _on_generate_proposal comp_aspects=', comp_names)
@@ -916,7 +970,34 @@ func _on_aspect_activated(idx:int) -> void:
 func _ensure_aspect_dialog() -> void:
 	if aspect_dialog:
 		return
-	# create a simple AcceptDialog for creating/editing aspects
+
+	# Prefer a scene-provided dialog so authors can edit the UI visually.
+	if panel and panel.has_node("AspectDialog"):
+		aspect_dialog = panel.get_node("AspectDialog")
+		# wire fields from the scene
+		var editor = aspect_dialog.get_node_or_null("AspectEditor")
+		if editor:
+			aspect_dialog_id_edit = editor.get_node_or_null("IDRow/IDEdit")
+			aspect_dialog_name_edit = editor.get_node_or_null("NameRow/NameEdit")
+			aspect_scalers_list = editor.get_node_or_null("ScalersList")
+			# scaler control buttons
+			var add_btn = editor.get_node_or_null("ScalersControls/AddScalerButton")
+			var edit_btn = editor.get_node_or_null("ScalersControls/EditScalerButton")
+			var rem_btn = editor.get_node_or_null("ScalersControls/RemoveScalerButton")
+			if add_btn:
+				add_btn.connect("pressed", Callable(self, "_on_aspect_add_scaler_pressed"))
+			if edit_btn:
+				edit_btn.connect("pressed", Callable(self, "_on_aspect_edit_scaler_pressed"))
+			if rem_btn:
+				rem_btn.connect("pressed", Callable(self, "_on_aspect_remove_scaler_pressed"))
+			# color picker
+			aspect_dialog_color = editor.get_node_or_null("ColorRow/ColorPicker")
+		# ensure confirm signal is connected (use Callable-based API)
+		if not aspect_dialog.is_connected("confirmed", Callable(self, "_on_aspect_dialog_confirmed")):
+			aspect_dialog.connect("confirmed", Callable(self, "_on_aspect_dialog_confirmed"))
+		return
+
+	# fallback: create the dialog in code (keeps previous behavior for older editors)
 	aspect_dialog = AcceptDialog.new()
 	aspect_dialog.title = "Create / Edit Aspect"
 	var cont = VBoxContainer.new()
@@ -959,6 +1040,18 @@ func _ensure_aspect_dialog() -> void:
 	cont.add_child(scalers_controls)
 	# connect confirm
 	aspect_dialog.connect("confirmed", Callable(self, "_on_aspect_dialog_confirmed"))
+	# Color picker for aspects
+	aspect_dialog_color = ColorPickerButton.new()
+	aspect_dialog_color.name = "AspectColorPicker"
+	# default color
+	aspect_dialog_color.color = Color(1, 1, 1, 1)
+	var color_row_lbl = Label.new()
+	color_row_lbl.text = "Color:"
+	var color_row = HBoxContainer.new()
+	color_row.add_child(color_row_lbl)
+	color_row.add_child(aspect_dialog_color)
+	cont.add_child(color_row)
+
 	panel.add_child(aspect_dialog)
 
 
@@ -969,16 +1062,25 @@ func _on_aspect_dialog_confirmed() -> void:
 	if idv == "":
 		SynergyHelpers.show_message('Aspect ID cannot be empty.')
 		return
-	# determine path
-	var path = 'res://aspects/' + idv + '.tres'
-	# if editing existing aspect, override path
+	# determine new path based on ID (always save using ID as filename)
+	var new_path = 'res://aspects/' + idv + '.tres'
+	var old_path = ""
 	if editing_aspect_path != "":
-		path = editing_aspect_path
+		old_path = editing_aspect_path
+	var path = new_path
 	# Build or update a typed Aspect resource if available
 	var r = null
+	var r_old = null
 	# If editing, load existing resource so we preserve other fields
 	if editing_aspect_path != "":
-		r = ResourceLoader.load(editing_aspect_path)
+		# load the existing resource and duplicate it so we can safely modify and save
+		r_old = ResourceLoader.load(editing_aspect_path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
+		if r_old:
+			# duplicate to avoid modifying the in-editor loaded resource instance
+			# use a shallow duplicate — deep duplicate may not be necessary here
+			r = r_old.duplicate()
+		else:
+			r = null
 	else:
 		# prefer to instantiate the Aspect class if registered
 		if ClassDB.class_exists('Aspect'):
@@ -986,11 +1088,46 @@ func _on_aspect_dialog_confirmed() -> void:
 		else:
 			# fallback to generic Resource so the file still saves
 			r = Resource.new()
+	# If duplication/loading failed, fall back to creating a new Aspect/resource
+	if r == null:
+		if ClassDB.class_exists('Aspect'):
+			r = Aspect.new()
+		else:
+			r = Resource.new()
+
+	# If the duplicated resource isn't the typed Aspect class (rare), create a proper Aspect and
+	# copy over known fields so saving will include the Aspect-specific properties.
+	if ClassDB.class_exists('Aspect') and r.get_class() != 'Aspect':
+		var typed = Aspect.new()
+		# copy name
+		if r.has_method('get_name'):
+			typed.set_name(r.get_name())
+		elif r.get('name') != null:
+			typed.set_name(r.get('name'))
+		# copy default_scalers
+		var vals = null
+		if r.has_method('get_default_scalers'):
+			vals = r.get_default_scalers()
+		elif r.get('default_scalers') != null:
+			vals = r.get('default_scalers')
+		if typeof(vals) == TYPE_DICTIONARY:
+			typed.set_default_scalers(vals)
+		# copy color
+		var cval = null
+		if r.has_method('get_color'):
+			cval = r.get_color()
+		elif r.get('color') != null:
+			cval = r.get('color')
+		if typeof(cval) == TYPE_COLOR:
+			typed.set_color(cval)
+		# replace r with typed Aspect for saving
+		r = typed
+
 	# set name property via setter if present
 	if r:
 		if r.has_method('set_name'):
 			r.set_name(namev)
-		elif r.has('name'):
+		else:
 			r.set('name', namev)
 	# collect default scalers from dialog data and set on resource
 	var defaults = {}
@@ -1003,12 +1140,140 @@ func _on_aspect_dialog_confirmed() -> void:
 	if r:
 		if r.has_method('set_default_scalers'):
 			r.set_default_scalers(defaults)
-		elif r.has('default_scalers'):
+		else:
 			r.set('default_scalers', defaults)
-	# Save resource
+	# set color from dialog if provided
+	var col = null
+	if r and aspect_dialog_color:
+		col = aspect_dialog_color.color
+		# truncate color components to 3 decimal places for saving (simple method: truncate)
+		var tr = int(col.r * 1000) / 1000.0
+		var tg = int(col.g * 1000) / 1000.0
+		var tb = int(col.b * 1000) / 1000.0
+		var ta = int(col.a * 1000) / 1000.0
+		var save_col = Color(tr, tg, tb, ta)
+		if r.has_method('set_color'):
+			r.set_color(save_col)
+		else:
+			r.set('color', save_col)
+		# use the saved/truncated color for any subsequent file text patching
+		col = save_col
+	# Debug: log what we're about to save so we can debug missing color persistence
+	print('[SynergyPlugin] Saving aspect -> class=', r.get_class(), ' has_set_color=', r.has_method('set_color'), ' color=', col, ' defaults=', defaults)
+	# Save resource to the new path
 	var err = ResourceSaver.save(r, path)
+	print('[SynergyPlugin] ResourceSaver.save returned: ', err)
 	if err == OK:
 		SynergyHelpers.show_message('Saved aspect: ' + path)
+		# Verify color persisted; some editor/runtime builds may lose typed property serialization.
+		# Reload the saved resource and check for color; if missing, patch the .tres text to include it.
+		var saved_res = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
+		var saved_has_color = false
+		if saved_res:
+			if saved_res.has_method('get_color'):
+				var sc = saved_res.get_color()
+				if typeof(sc) == TYPE_COLOR:
+					saved_has_color = true
+			elif saved_res.get('color') != null:
+				saved_has_color = true
+		# if color missing but we had a color value, patch the file text
+		if not saved_has_color and col != null:
+			print('[SynergyPlugin] color missing after save; patching .tres text for ', path)
+			var f_read = FileAccess.open(path, FileAccess.ModeFlags.READ)
+			if f_read:
+				var txt = f_read.get_as_text()
+				f_read.close()
+				# find the resource block and insert color line just after the [resource] header
+				var lines = txt.split('\n')
+				var out_lines = []
+				var inserted = false
+				for i in range(lines.size()):
+					out_lines.append(lines[i])
+					if not inserted and lines[i].strip_edges() == '[resource]':
+						# insert color on next line (ensure one decimal place)
+						var sr = str(int(col.r * 1000) / 1000.0)
+						var doti = sr.find('.')
+						if doti == -1:
+							sr += '.000'
+						else:
+							var frac = sr.substr(doti + 1, sr.length() - (doti + 1))
+							while frac.length() < 3:
+								sr += '0'
+						var sg = str(int(col.g * 1000) / 1000.0)
+						var dotj = sg.find('.')
+						if dotj == -1:
+							sg += '.000'
+						else:
+							var fracg = sg.substr(dotj + 1, sg.length() - (dotj + 1))
+							while fracg.length() < 3:
+								sg += '0'
+						var sb = str(int(col.b * 1000) / 1000.0)
+						var dotk = sb.find('.')
+						if dotk == -1:
+							sb += '.000'
+						else:
+							var fracb = sb.substr(dotk + 1, sb.length() - (dotk + 1))
+							while fracb.length() < 3:
+								sb += '0'
+						var sa = str(int(col.a * 1000) / 1000.0)
+						var dotl = sa.find('.')
+						if dotl == -1:
+							sa += '.000'
+						else:
+							var fraca = sa.substr(dotl + 1, sa.length() - (dotl + 1))
+							while fraca.length() < 3:
+								sa += '0'
+						var color_line = 'color = Color(' + sr + ', ' + sg + ', ' + sb + ', ' + sa + ')'
+						out_lines.append(color_line)
+						inserted = true
+				# build final text
+				var final_text = ''
+				for j in range(out_lines.size()):
+					final_text += out_lines[j]
+					if j < out_lines.size() - 1:
+						final_text += '\n'
+				# write back
+				var f2 = FileAccess.open(path, FileAccess.ModeFlags.WRITE)
+				if f2:
+					f2.store_string(final_text)
+					f2.close()
+					print('[SynergyPlugin] patched color into ', path)
+				else:
+					print('[SynergyPlugin] failed to open for write: ', path)
+			else:
+				print('[SynergyPlugin] failed to open saved file for read: ', path)
+		# If we were editing an existing file and its path differs from the new path,
+		# move the old file to the aspects/trash/ folder to avoid orphaning.
+		if old_path != "" and old_path != new_path:
+			var fname_old = old_path.get_file()
+			var dir_old = DirAccess.open('res://aspects')
+			if dir_old:
+				if not dir_old.dir_exists('trash'):
+					dir_old.make_dir('trash')
+				var src_file = FileAccess.open(old_path, FileAccess.ModeFlags.READ)
+				if src_file:
+					var contents_old = src_file.get_as_text()
+					src_file.close()
+					var dest_path_old = 'res://aspects/trash/' + fname_old
+					var dest_file = FileAccess.open(dest_path_old, FileAccess.ModeFlags.WRITE)
+					if dest_file:
+						dest_file.store_string(contents_old)
+						dest_file.close()
+						# attempt to remove the original
+						if dir_old.has_method('remove_file'):
+							var derr = dir_old.remove_file(fname_old)
+							if derr == OK:
+								# old file removed
+								pass
+							elif dir_old.has_method('remove'):
+								var derr2 = dir_old.remove(fname_old)
+								if derr2 == OK:
+									pass
+				dir_old.list_dir_end()
+			else:
+				# unable to move old file; inform user
+				SynergyHelpers.show_message('Saved new aspect but failed to archive old file: ' + old_path)
+		# reset editing state and refresh UI
 		editing_aspect_path = ""
 		_refresh_aspect_list()
 		# rebuild catalog and refresh informative panel immediately
@@ -1041,7 +1306,7 @@ func _on_edit_aspect_pressed() -> void:
 	if not path:
 		SynergyHelpers.show_message('Selected aspect has no path metadata.')
 		return
-	var r = ResourceLoader.load(path)
+	var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 	if not r:
 		SynergyHelpers.show_message('Failed to load aspect resource: ' + path)
 		return
@@ -1052,7 +1317,7 @@ func _on_edit_aspect_pressed() -> void:
 	var name_val = ""
 	if r.has_method('get_name'):
 		name_val = str(r.get_name())
-	elif r.has('name'):
+	elif r.get('name') != null:
 		name_val = str(r.get('name'))
 	aspect_dialog_name_edit.text = name_val
 	# derive id from filename if possible
@@ -1063,11 +1328,21 @@ func _on_edit_aspect_pressed() -> void:
 		var vals = null
 		if r.has_method('get_default_scalers'):
 			vals = r.get_default_scalers()
-		elif r.has('default_scalers'):
+		elif r.get('default_scalers') != null:
 			vals = r.get('default_scalers')
 		if typeof(vals) == TYPE_DICTIONARY:
 			for k in vals.keys():
 				aspect_scalers_data.append({"key": k, "value": vals[k]})
+
+		# populate color if present on resource
+		var cval = null
+		if r.has_method('get_color'):
+			cval = r.get_color()
+		elif r.get('color') != null:
+			cval = r.get('color')
+		# Color is a Color type (TYPE_COLOR) in Godot; assign if available
+		if aspect_dialog_color and typeof(cval) == TYPE_COLOR:
+			aspect_dialog_color.color = cval
 	_refresh_aspect_scalers_list()
 	aspect_dialog.popup_centered()
 
@@ -1103,7 +1378,7 @@ func _on_delete_aspect_pressed() -> void:
 		SynergyHelpers.show_message('Selected aspect has no path metadata.')
 		return
 	# Load resource and pretty-print JSON into confirm dialog
-	var r = ResourceLoader.load(path)
+	var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 	var preview = {}
 	if r:
 		# try to present as a small dict
@@ -1152,13 +1427,13 @@ func _on_suggest_defaults():
 	# load from resolved aspect_paths first
 	if aspect_paths.size() > 0:
 		for p in aspect_paths:
-			var r = ResourceLoader.load(p)
+			var r = ResourceLoader.load(p, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 			_add_scalers_from_res(r, gathered)
 	else:
 		# try to match by name across all aspects (case-insensitive)
 		for i in range(aspect_list.get_item_count()):
 			var path = aspect_list.get_item_metadata(i)
-			var r = ResourceLoader.load(path)
+			var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 			var label = ""
 			if r and r.has_method("get_name"):
 				label = r.get_name()
@@ -1202,6 +1477,9 @@ func _on_save_synergy():
 		if path.ends_with('.tres') or path.ends_with('.res'):
 			var s = Synergy.new()
 			s.set_spec(spec)
+			# allow an override color to be stored on the Synergy resource itself
+			if spec.has('color') and typeof(spec['color']) == TYPE_COLOR:
+				s.set('color', spec['color'])
 			var err = ResourceSaver.save(s, path)
 			if err == OK:
 				SynergyHelpers.show_message("Overwrote synergy: " + path)
@@ -1226,11 +1504,27 @@ func _on_save_synergy():
 	var path_new = "res://synergies/" + id + ".tres"
 	var s2 = Synergy.new()
 	s2.set_spec(spec)
+	# store override color onto the resource so it is serialized as a top-level property
+	if spec.has('color') and typeof(spec['color']) == TYPE_COLOR:
+		s2.set('color', spec['color'])
 	var err2 = ResourceSaver.save(s2, path_new)
 	if err2 == OK:
 		SynergyHelpers.show_message("Saved synergy: " + path_new)
 		loaded_synergy_path = path_new
 		_refresh_synergy_list()
+		# Verify color persisted; if not, patch the .tres text similar to aspects
+		if spec.has('color') and typeof(spec['color']) == TYPE_COLOR:
+			var saved_spec = _load_spec_from_path(path_new)
+			var saved_has_color = false
+			if typeof(saved_spec) == TYPE_DICTIONARY and saved_spec.has('color') and typeof(saved_spec['color']) == TYPE_COLOR:
+				saved_has_color = true
+			# Also check direct property on resource if get_spec didn't include it
+			if not saved_has_color:
+				var saved_r = ResourceLoader.load(path_new, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
+				if saved_r and saved_r.get('color') != null:
+					saved_has_color = true
+			if not saved_has_color:
+				_patch_color_into_tres(path_new, spec['color'])
 	else:
 		# Fallback: write JSON spec
 		SynergyHelpers.show_message("Failed to save typed Synergy resource (ResourceSaver returned: " + str(err2) + "). Attempting JSON fallback...")
@@ -1252,6 +1546,20 @@ func _populate_mid_controls(spec:Dictionary) -> void:
 	# id / name
 	id_edit.text = str(spec.get("id", ""))
 	name_edit.text = str(spec.get("name", ""))
+
+	# color: populate ColorPicker if present
+	if color_picker:
+		var colv = spec.get("color", null)
+		if colv != null:
+			# accept Color objects or strings/arrays where possible
+			if typeof(colv) == TYPE_COLOR:
+				color_picker.color = colv
+			elif typeof(colv) == TYPE_STRING:
+				# try parsing r,g,b,a from a stringified form if present
+				# fallback: ignore
+				pass
+			else:
+				pass
 
 	# scalers: populate scalers_data and refresh list
 	scalers_data.clear()
@@ -1296,6 +1604,9 @@ func _on_aspect_add_scaler_pressed() -> void:
 	_aspect_scaler_mode = true
 	scaler_key_edit.text = ""
 	scaler_value_edit.text = ""
+	# If the aspect dialog is open, hide it so the scaler dialog can be shown (avoids exclusive window conflict)
+	if aspect_dialog and aspect_dialog.is_visible():
+		aspect_dialog.hide()
 	scaler_dialog.popup_centered()
 
 
@@ -1313,6 +1624,9 @@ func _on_aspect_edit_scaler_pressed() -> void:
 	_aspect_scaler_mode = true
 	scaler_key_edit.text = str(entry.get('key', ''))
 	scaler_value_edit.text = str(entry.get('value', ''))
+	# Hide aspect dialog to avoid exclusive child conflict, then show scaler dialog
+	if aspect_dialog and aspect_dialog.is_visible():
+		aspect_dialog.hide()
 	scaler_dialog.popup_centered()
 
 
@@ -1357,6 +1671,9 @@ func _on_scaler_dialog_confirmed() -> void:
 		_refresh_aspect_defaults_panel()
 		# hide scaler dialog
 		scaler_dialog.hide()
+		# restore aspect dialog so the user can continue editing the aspect
+		if aspect_dialog:
+			aspect_dialog.popup_centered()
 		return
 	# synergy scaler flow
 	if scalers_editing_index >= 0 and scalers_editing_index < scalers_data.size():
@@ -1426,12 +1743,12 @@ func _build_aspect_scaler_catalog() -> void:
 		if not dir.current_is_dir():
 			if fname.ends_with('.tres') or fname.ends_with('.res') or fname.ends_with('.json'):
 				var path = 'res://aspects/' + fname
-				var r = ResourceLoader.load(path)
+				var r = ResourceLoader.load(path, "", ResourceLoader.CacheMode.CACHE_MODE_IGNORE)
 				if r:
 					var vals = null
 					if r.has_method('get_default_scalers'):
 						vals = r.get_default_scalers()
-					elif r.has('default_scalers'):
+					elif r.get('default_scalers') != null:
 						vals = r.get('default_scalers')
 					if typeof(vals) == TYPE_DICTIONARY:
 						for k in vals.keys():
@@ -1486,7 +1803,7 @@ func _add_scalers_from_res(res, gathered:Dictionary) -> void:
 	var vals = null
 	if res.has_method("get_default_scalers"):
 		vals = res.get_default_scalers()
-	elif res.has("default_scalers"):
+	elif res.get("default_scalers") != null:
 		vals = res.get("default_scalers")
 	if typeof(vals) != TYPE_DICTIONARY:
 		return
@@ -1535,6 +1852,62 @@ func _pretty_json(v, indent_level := 0) -> String:
 			return "null"
 	# fallback
 	return str(v)
+
+
+func _format_color_comp(v: float) -> String:
+	# Truncate a float to 3 decimal places and ensure exactly three decimals in string form
+	var s = str(int(v * 1000) / 1000.0)
+	var d = s.find('.')
+	if d == -1:
+		s += '.000'
+		return s
+	var frac = s.substr(d + 1, s.length() - (d + 1))
+	while frac.length() < 3:
+		s += '0'
+		frac = s.substr(d + 1, s.length() - (d + 1))
+	return s
+
+
+func _patch_color_into_tres(path:String, col:Color) -> bool:
+	# Insert a top-level `color = Color(r, g, b, a)` line under the [resource] header
+	# Returns true on success.
+	var f = FileAccess.open(path, FileAccess.ModeFlags.READ)
+	if not f:
+		print('[SynergyPlugin] _patch_color_into_tres: failed to open for read:', path)
+		return false
+	var txt = f.get_as_text()
+	f.close()
+
+	var lines = txt.split('\n')
+	var out_lines = []
+	var inserted = false
+	for i in range(lines.size()):
+		out_lines.append(lines[i])
+		if not inserted and lines[i].strip_edges() == '[resource]':
+			# format components to 3 decimal places
+			var sr = _format_color_comp(col.r)
+			var sg = _format_color_comp(col.g)
+			var sb = _format_color_comp(col.b)
+			var sa = _format_color_comp(col.a)
+			var color_line = 'color = Color(' + sr + ', ' + sg + ', ' + sb + ', ' + sa + ')'
+			out_lines.append(color_line)
+			inserted = true
+
+	# write back
+	var final_text = ''
+	for j in range(out_lines.size()):
+		final_text += out_lines[j]
+		if j < out_lines.size() - 1:
+			final_text += '\n'
+
+	var fw = FileAccess.open(path, FileAccess.ModeFlags.WRITE)
+	if not fw:
+		print('[SynergyPlugin] _patch_color_into_tres: failed to open for write:', path)
+		return false
+	fw.store_string(final_text)
+	fw.close()
+	print('[SynergyPlugin] _patch_color_into_tres: patched color into', path)
+	return true
 
 
 func _refresh_executors_list() -> void:
@@ -1993,6 +2366,9 @@ func _merge_mid_controls_into_spec(spec:Dictionary) -> void:
 	spec["default_scalers"] = _collect_scalers_from_ui()
 	# executors
 	spec["extra_executors"] = executors_data
+	# color override from mid UI
+	if color_picker:
+		spec["color"] = color_picker.color
 	# update preview
 	# update current_spec after merging
 	current_spec = spec

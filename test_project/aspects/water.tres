@@ -1,4 +1,4 @@
-[gd_resource type="Aspect" format=3 uid="uid://q08ublt2voof"]
+[gd_resource type="Aspect" format=3 uid="uid://bmurosvl4tiet"]
 
 [resource]
 name = "Water"
@@ -7,3 +7,4 @@ default_scalers = {
 "amount": 0.85,
 "cast_time": 0.7
 }
+color = Color(0.28, 0.81, 0.995, 1)

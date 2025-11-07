@@ -1,0 +1,79 @@
+[gd_scene load_steps=7 format=3 uid="uid://dsj36yv5wiqt3"]
+
+[sub_resource type="Gradient" id="Gradient_kdsfe"]
+colors = PackedColorArray(0, 0, 0, 1, 0, 0, 0, 1)
+metadata/_snap_enabled = true
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_f7laq"]
+gradient = SubResource("Gradient_kdsfe")
+width = 264
+
+[sub_resource type="Gradient" id="Gradient_0pd0a"]
+colors = PackedColorArray(1, 0, 0, 1, 1, 0, 0, 1)
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_u0ds1"]
+gradient = SubResource("Gradient_0pd0a")
+
+[sub_resource type="Gradient" id="Gradient_1jkw3"]
+
+[sub_resource type="GradientTexture1D" id="GradientTexture1D_pi4ng"]
+gradient = SubResource("Gradient_1jkw3")
+
+[node name="DemoUi" type="Node2D"]
+
+[node name="MainBar" type="BoxContainer" parent="."]
+offset_right = 40.0
+offset_bottom = 40.0
+vertical = true
+
+[node name="StatContainer" type="BoxContainer" parent="MainBar"]
+custom_minimum_size = Vector2(264, 32)
+layout_mode = 2
+
+[node name="HealthBar" type="CanvasGroup" parent="MainBar/StatContainer"]
+position = Vector2(132, 15)
+
+[node name="HealthBG" type="Sprite2D" parent="MainBar/StatContainer/HealthBar"]
+scale = Vector2(1, 30)
+texture = SubResource("GradientTexture1D_f7laq")
+
+[node name="Health" type="Sprite2D" parent="MainBar/StatContainer/HealthBar/HealthBG"]
+scale = Vector2(1, 0.8)
+texture = SubResource("GradientTexture1D_u0ds1")
+
+[node name="ManaContainer" type="BoxContainer" parent="MainBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="AspectMana" type="CenterContainer" parent="MainBar/ManaContainer"]
+custom_minimum_size = Vector2(120, 120)
+layout_mode = 2
+
+[node name="ManaPool" type="Polygon2D" parent="MainBar/ManaContainer/AspectMana"]
+position = Vector2(67, 59)
+texture = SubResource("GradientTexture1D_pi4ng")
+texture_rotation = 1.5707964
+polygon = PackedVector2Array(-66.47574, 36.079895, -65.78262, -40.98046, -30.091522, -65.59118, 57.631165, -62.35057, 72.78879, 37.354897, 56.289795, 64.02878, -34.882294, 63.607544)
+uv = PackedVector2Array(-100.47635, 5.080261, -98.78293, -47.980278, -62.092133, -79.59081, -16.369751, -64.35002, 28.788177, -5.6447372, 11.28949, 44.02896, -55.882904, 66.60791)
+
+[node name="ManaLabels" type="BoxContainer" parent="MainBar/ManaContainer/AspectMana"]
+layout_mode = 2
+size_flags_horizontal = 4
+size_flags_vertical = 4
+alignment = 1
+vertical = true
+metadata/_edit_use_anchors_ = true
+
+[node name="Aspect" type="Label" parent="MainBar/ManaContainer/AspectMana/ManaLabels"]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "aspect"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Mana" type="Label" parent="MainBar/ManaContainer/AspectMana/ManaLabels"]
+layout_mode = 2
+size_flags_horizontal = 4
+text = "mana"
+horizontal_alignment = 1
+vertical_alignment = 1

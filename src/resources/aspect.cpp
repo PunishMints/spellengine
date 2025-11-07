@@ -1,6 +1,7 @@
 #include "spellengine/aspect.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/color.hpp>
 
 using namespace godot;
 
@@ -21,6 +22,9 @@ void Aspect::set_description(const String &p_description) { description = p_desc
 Dictionary Aspect::get_default_scalers() const { return default_scalers; }
 void Aspect::set_default_scalers(const Dictionary &p) { default_scalers = p; }
 
+Color Aspect::get_color() const { return color; }
+void Aspect::set_color(const Color &p_color) { color = p_color; }
+
 void Aspect::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_components"), &Aspect::get_components);
     ClassDB::bind_method(D_METHOD("set_components", "components"), &Aspect::set_components);
@@ -37,4 +41,8 @@ void Aspect::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_default_scalers"), &Aspect::get_default_scalers);
     ClassDB::bind_method(D_METHOD("set_default_scalers", "scalers"), &Aspect::set_default_scalers);
     ADD_PROPERTY(PropertyInfo(Variant::DICTIONARY, "default_scalers"), "set_default_scalers", "get_default_scalers");
+
+    ClassDB::bind_method(D_METHOD("get_color"), &Aspect::get_color);
+    ClassDB::bind_method(D_METHOD("set_color", "color"), &Aspect::set_color);
+    ADD_PROPERTY(PropertyInfo(Variant::COLOR, "color"), "set_color", "get_color");
 }

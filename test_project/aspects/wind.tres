@@ -8,3 +8,4 @@ default_scalers = {
 "mana_cost": 0.8,
 "speed": 1.5
 }
+color = Color(0.69, 0.921, 0.759, 1)

@@ -15,7 +15,6 @@ const MOUSE_RIGHT = 2
 @export var sprint_multiplier: float = 1.8
 @export var jump_velocity: float = 4.5
 @export var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
-@export var caster: Resource
 
 # Camera (third-person) defaults — can be overridden by caster.params (see _get_camera_param)
 @export var cam_distance: float = 4.0
@@ -29,9 +28,10 @@ const MOUSE_RIGHT = 2
 @export var capture_mouse: bool = true
 
 # camera & preview nodes (expected in the scene)
+@onready var caster = $Caster
 @onready var cam : Camera3D = $Camera3D
 @onready var placement_preview : MeshInstance3D = $PlacementPreview
-var PauseMenuScene = preload("res://demo/pause_menu.tscn")
+var PauseMenuScene = preload("res://demo/scenes/ui/pause_menu.tscn")
 
 # Control executor stack: last-in wins. Each control is a Dictionary with keys:
 # {id: String, input(event):Callable?, physics_process(delta):Callable?, confirm:Callable?, cancel:Callable?, meta:Dictionary}
@@ -44,6 +44,11 @@ var _cam_target_yaw: float = 0.0
 var _cam_target_pitch: float = -0.15
 var _pause_ui: CanvasLayer = null
 var _paused: bool = false
+var _ui_root: Node = null
+var _mana_template: Node = null
+var _mana_entries: Dictionary = {}
+var _health_bar: Node = null
+var _dead: bool = false
 
 func _ready():
 	if placement_preview:
@@ -64,6 +69,9 @@ func _ready():
 	_ensure_input_actions()
 
 	# process mode is configured in the project/engine settings; no runtime changes here
+
+	# wire up demo UI if present
+	_setup_ui()
 
 
 func _physics_process(delta:float) -> void:
@@ -119,7 +127,7 @@ func handle_movement(delta:float) -> void:
 	# gravity/jump — derive per-character gravity from caster.params when present
 	var gravity_dir := Vector3.DOWN
 	var gravity_strength := gravity
-	if caster and caster is Resource and caster.has("params"):
+	if caster and caster is Resource and caster.get("params") != null:
 		var gvec = caster.params.get("gravity_vector", null)
 		if typeof(gvec) == TYPE_VECTOR3:
 			gravity_dir = gvec.normalized()
@@ -258,9 +266,10 @@ func _get_current_placement() -> Vector3:
 
 func _get_camera_param(key:String, fallback):
 	# Helper: read camera-related params from caster.params if present, otherwise fallback
-	if caster and caster is Resource and caster.has("params"):
-		if caster.params.has(key):
-			return caster.params.get(key)
+	if caster and caster is Resource:
+		var p = caster.get("params")
+		if typeof(p) == TYPE_DICTIONARY and p.has(key):
+			return p.get(key)
 	return fallback
 
 
@@ -310,6 +319,11 @@ func _process(delta:float) -> void:
 	# Look at the target origin
 	cam.look_at(target_origin, Vector3.UP)
 
+	# Update UI (health/mana) each frame if we have a caster and UI
+	_update_ui_from_caster()
+	# Update UI (health/mana) each frame if we have a caster and UI
+	_update_ui_from_caster()
+
 
 func _update_mouse_capture() -> void:
 	# Manage mouse visibility and capture: capture when not paused and capture_mouse is enabled
@@ -336,9 +350,10 @@ func _ensure_pause_ui() -> void:
 		return
 	root.add_child(menu)
 	menu.visible = false
-	print("[Controller] Pause UI instantiated at", menu.get_path())
-	# print process/pause modes for debugging
-	print("[Controller] menu.process_mode=", menu.process_mode)
+	# debug: list menu children
+	var ch = []
+	for c in menu.get_children():
+		ch.append(c.get_class() + ":" + str(c.name))
 
 	# connect signals so the controller handles resume/quit
 	# Prefer connecting the actual Button nodes directly (more robust than relying on a scene script)
@@ -348,15 +363,12 @@ func _ensure_pause_ui() -> void:
 		resume_btn = menu.get_node("Panel/VBoxContainer/ResumeButton")
 	if menu.has_node("Panel/VBoxContainer/QuitButton"):
 		quit_btn = menu.get_node("Panel/VBoxContainer/QuitButton")
-	print("[Controller] pause menu buttons found resume=", resume_btn != null, " quit=", quit_btn != null)
 	if resume_btn:
 		var ok_r = resume_btn.connect("pressed", Callable(self, "_on_resume_pressed"))
-		print("[Controller] connect resume_btn.pressed ->", ok_r)
-		print("[Controller] resume connected=", resume_btn.is_connected("pressed", Callable(self, "_on_resume_pressed")))
+		# try to give it focus so it receives input while paused
+		resume_btn.grab_focus()
 	if quit_btn:
 		var ok_q = quit_btn.connect("pressed", Callable(self, "_on_quit_pressed"))
-		print("[Controller] connect quit_btn.pressed ->", ok_q)
-		print("[Controller] quit connected=", quit_btn.is_connected("pressed", Callable(self, "_on_quit_pressed")))
 
 	_pause_ui = menu
 
@@ -366,6 +378,209 @@ func _ensure_input_actions() -> void:
 	if not InputMap.has_action("pause"):
 		InputMap.add_action("pause")
 
+	# Also ensure demo UI update actions exist (non-essential)
+	if not InputMap.has_action("ui_debug"):
+		InputMap.add_action("ui_debug")
+
+
+func _find_caster_in_node(n:Node) -> Node:
+	# Recursively search for a node that exposes get_assigned_aspects (SpellCaster)
+	for child in n.get_children():
+		if typeof(child) == TYPE_OBJECT and child.has_method("get_assigned_aspects"):
+			return child
+		var found = _find_caster_in_node(child)
+		if found:
+			return found
+	return null
+
+
+func _setup_ui() -> void:
+	# Attempt to find a DemoUi node in the current scene
+	var root = get_tree().current_scene if get_tree().current_scene else get_tree().get_root()
+	if root and root.has_node("DemoUi"):
+		_ui_root = root.get_node("DemoUi")
+		print("[Controller] found DemoUi at", _ui_root.get_path())
+		# attempt to auto-wire caster from the scene if not explicitly set on this controller
+		if not caster:
+			# prefer a node literally named 'Caster'
+			if root.has_node("Caster"):
+				caster = root.get_node("Caster")
+				print("[Controller] auto-wired caster from scene node:", caster.get_path())
+			else:
+				# recursive search for a node that exposes get_assigned_aspects (SpellCaster)
+				var found_c = _find_caster_in_node(root)
+				if found_c:
+					caster = found_c
+					print("[Controller] auto-wired caster by search:", caster.get_path())
+		# Find ManaContainer and a template ManaPool inside it
+		if _ui_root.has_node("MainBar/ManaContainer/AspectMana"):
+			_mana_template = _ui_root.get_node("MainBar/ManaContainer/AspectMana")
+			# keep template hidden (we'll duplicate it)
+			_mana_template.visible = false
+			print("[Controller] Mana template found")
+		# find health bar if present
+		if _ui_root.has_node("MainBar/StatContainer/HealthBar/HealthBG/Health"):
+			_health_bar = _ui_root.get_node("MainBar/StatContainer/HealthBar/HealthBG/Health")
+			print("[Controller] health bar found", _health_bar.get_path())
+		# initialize mana entries based on caster aspects immediately
+		_populate_mana_entries()
+	else:
+		print("[Controller] DemoUi not found in current scene")
+
+
+func _populate_mana_entries() -> void:
+	# Clear existing entries (except template)
+	_mana_entries.clear()
+	if not _ui_root or not _mana_template:
+		printerr("[Controller] _populate_mana_entries: UI root or mana template missing")
+		return
+	# The demo UI places the AspectMana template under MainBar/ManaContainer
+	var container = _ui_root.get_node("MainBar/ManaContainer") if _ui_root.has_node("MainBar/ManaContainer") else null
+	if not container:
+		printerr("[Controller] _populate_mana_entries: MainBar/ManaContainer not found")
+		return
+	# Require a scene Caster node with the canonical API
+	if not caster:
+		printerr("[Controller] _populate_mana_entries: caster is not assigned on the controller; expected @onready var caster = $Caster")
+		return
+	if typeof(caster) != TYPE_OBJECT or not caster.has_method("get_assigned_aspects"):
+		printerr("[Controller] _populate_mana_entries: caster does not expose get_assigned_aspects(); check your Caster node implementation")
+		return
+	var aspects = caster.get_assigned_aspects()
+	if typeof(aspects) != TYPE_ARRAY or aspects.size() == 0:
+		printerr("[Controller] _populate_mana_entries: caster.get_assigned_aspects() returned empty or non-array:", aspects)
+		return
+	# Build UI strictly from the returned aspects
+	for a in aspects:
+		var node = _mana_template.duplicate()
+		container.add_child(node)
+		node.visible = true
+		# Attempt to load corresponding Aspect resource to fetch color
+		var aspect_res_path = "res://aspects/%s.tres" % str(a)
+		var asp_res = null
+		if ResourceLoader.exists(aspect_res_path):
+			asp_res = ResourceLoader.load(aspect_res_path)
+		if asp_res:
+			var col = null
+			# Prefer the bound getter if present on the Aspect resource
+			if typeof(asp_res) == TYPE_OBJECT and asp_res.has_method("get_color"):
+				col = asp_res.get_color()
+			# Fallback: try reading the property directly from the resource (works if TRES contains 'color' even before rebuild)
+			if col == null:
+				# Object.get() returns null if missing
+				col = asp_res.get("color") if typeof(asp_res) == TYPE_OBJECT else null
+			if col != null:
+				# build a simple two-stop gradient (darker -> color)
+				var g = Gradient.new()
+				var dark = Color(col.r * 0.6, col.g * 0.6, col.b * 0.6, col.a)
+				g.add_point(0.0, dark)
+				g.add_point(1.0, col)
+				var gt = GradientTexture1D.new()
+				gt.gradient = g
+				gt.width = 128
+				# assign to the Polygon2D child named 'ManaPool' inside the Aspect template
+				if node.has_node("ManaPool"):
+					var pool = node.get_node("ManaPool")
+					# Polygon2D uses 'texture' property
+					pool.texture = gt
+				else:
+					printerr("[Controller] Aspect template missing 'ManaPool' child:", node)
+			else:
+				printerr("[Controller] Aspect resource missing get_color() or returned null:", aspect_res_path)
+		else:
+			printerr("[Controller] Aspect resource not found:", aspect_res_path)
+		# find the two labels inside the template: ManaLabels/Aspect and ManaLabels/Mana
+		var lbl_aspect = null
+		var lbl_mana = null
+		if node.has_node("ManaLabels/Aspect"):
+			lbl_aspect = node.get_node("ManaLabels/Aspect")
+		if node.has_node("ManaLabels/Mana"):
+			lbl_mana = node.get_node("ManaLabels/Mana")
+		# Determine display name: prefer Aspect resource's name if available
+		var disp = str(a)
+		if asp_res and typeof(asp_res) == TYPE_OBJECT and asp_res.has_method("get_name"):
+			disp = asp_res.get_name()
+		elif disp.length() > 0:
+			disp = disp.capitalize()
+		if lbl_aspect:
+			lbl_aspect.text = disp
+		if lbl_mana:
+			lbl_mana.text = "0"
+		# Store display name and references for later UI updates
+		print("[Controller] Making Mana Pool: ", disp)
+		_mana_entries[str(a)] = {"node": node, "label_aspect": lbl_aspect, "label_mana": lbl_mana, "display": disp, "aspect_res": asp_res}
+	print("[Controller] populated mana entries:", _mana_entries.keys())
+
+
+func _update_ui_from_caster() -> void:
+	if not caster or not _ui_root:
+		return
+	# Health
+	var cur_health = null
+	var max_health = null
+	if typeof(caster) == TYPE_OBJECT and caster.has_method("is_alive"):
+		# native SpellCaster or similar
+		if caster.has_method("get_health"):
+			cur_health = caster.get_health()
+		if caster.has_method("get_max_health"):
+			max_health = caster.get_max_health()
+		# fallback to properties
+		if cur_health == null and caster.get("health") != null:
+			cur_health = caster.health
+		if max_health == null and caster.get("max_health") != null:
+			max_health = caster.max_health
+	elif caster is Resource:
+		if caster.get("health") != null:
+			cur_health = caster.health
+		if caster.get("max_health") != null:
+			max_health = caster.max_health
+
+	if cur_health != null and max_health != null and _health_bar:
+		var frac = 0.0
+		if max_health > 0:
+			frac = float(cur_health) / float(max_health)
+			# HealthBar is a Sprite2D scaled horizontally, adjust its scale.x
+			var s = _health_bar.scale
+			s.x = clamp(frac, 0.0, 1.0)
+			_health_bar.scale = s
+		# death handling
+		if cur_health <= 0 and not _dead:
+			_on_death()
+
+	# Mana per aspect
+	for a in _mana_entries.keys():
+		# Canonical flow: call caster.get_mana(aspect) on the scene Caster node
+		var val = 0
+		if typeof(caster) != TYPE_OBJECT or not caster.has_method("get_mana"):
+			printerr("[Controller] _update_ui_from_caster: caster missing get_mana(aspect) method; cannot read per-aspect mana")
+		else:
+			val = caster.get_mana(str(a))
+		# update labels: show friendly display name and current mana
+		var info = _mana_entries[a]
+		if not info:
+			continue
+		var display = a
+		if info.has("display") and info["display"]:
+			display = info["display"]
+		if info.has("label_aspect") and info["label_aspect"]:
+			info["label_aspect"].text = str(display)
+		if info.has("label_mana") and info["label_mana"]:
+			info["label_mana"].text = str(val)
+
+
+func _on_death() -> void:
+	_dead = true
+	print("[Controller] Character has died")
+	# Stop movement and controls
+	velocity = Vector3.ZERO
+	control_stack.clear()
+	# Optionally show a death message on UI if present
+	if _ui_root and _ui_root.has_node("StatContainer/CanvasGroup"):
+		var cg = _ui_root.get_node("StatContainer/CanvasGroup")
+		if cg.has_node("DeathLabel"):
+			cg.get_node("DeathLabel").visible = true
+	# release mouse
+	_update_mouse_capture()
 
 func _on_pause_changed(new_paused: bool) -> void:
 	# ensure the pause UI scene exists and show/hide it
@@ -378,12 +593,10 @@ func _on_pause_changed(new_paused: bool) -> void:
 
 
 func _on_resume_pressed() -> void:
-	print("[Controller] _on_resume_pressed called")
 	_set_paused(false)
 
 
 func _on_quit_pressed() -> void:
-	print("[Controller] _on_quit_pressed called")
 	get_tree().quit()
 
 
