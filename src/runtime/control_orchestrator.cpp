@@ -143,14 +143,9 @@ void ControlOrchestrator::_on_single_control_done(const Variant &out, const Vari
 void ControlOrchestrator::_cleanup_self() {
     // Safe deferred deletion point
     UtilityFunctions::print("[ControlOrchestrator] _cleanup_self running");
-    // Temporarily avoid deleting the ControlManager and orchestrator itself
-    // while we debug a crash that appears tied to object lifetime. Keep the
-    // pointers around but null the references so callers won't reuse them.
-    if (cm) {
-        UtilityFunctions::print("[ControlOrchestrator] skipping memdelete(cm) (debug mode)");
-        cm = nullptr;
-    }
-    UtilityFunctions::print("[ControlOrchestrator] skipping memdelete(this) (debug mode)");
+    // Perform final cleanup: delete ControlManager and this orchestrator.
+    if (cm) { memdelete(cm); cm = nullptr; }
+    memdelete(this);
 }
 
 void ControlOrchestrator::_start_control_at(int idx, const Callable &on_complete) {

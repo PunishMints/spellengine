@@ -146,12 +146,11 @@ void ControlManager::_on_gizmo_complete(godot::Object *gizmo_obj, const godot::V
         if (n->get_parent()) {
             n->get_parent()->remove_child(n);
         }
-        // NOTE: temporarily avoid freeing the gizmo node to prevent
-        // use-after-free crashes while the callback chain unwinds. The
-        // node will remain in memory (leaked) until we implement a safe
-        // cleanup strategy. Removing the child detaches it from the scene
-        // but we do not call queue_free() here.
-        // n->queue_free();
+        // queue free to let Godot cleanup the node. This is safe because
+        // we removed it from the parent and unregistered it from the
+        // input controller above; queue_free defers actual deletion until
+        // the engine's idle loop so we avoid immediate use-after-free.
+        n->queue_free();
     }
 
     memdelete(se);
