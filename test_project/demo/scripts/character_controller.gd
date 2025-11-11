@@ -1,6 +1,3 @@
-#@tool must be the first token in the file; move it before extends
-@tool
-
 extends CharacterBody3D
 
 # Demo Character Controller for SpellEngine
@@ -10,6 +7,7 @@ extends CharacterBody3D
 
 const MOUSE_LEFT = 1
 const MOUSE_RIGHT = 2
+
 
 @export var speed: float = 4.0
 @export var sprint_multiplier: float = 1.8
@@ -32,10 +30,17 @@ const MOUSE_RIGHT = 2
 @onready var cam : Camera3D = $Camera3D
 @onready var placement_preview : MeshInstance3D = $PlacementPreview
 var PauseMenuScene = preload("res://demo/scenes/ui/pause_menu.tscn")
+var _registered_spell_actions : Array = []
+
+var engine = SpellEngine.new()
 
 # Control executor stack: last-in wins. Each control is a Dictionary with keys:
 # {id: String, input(event):Callable?, physics_process(delta):Callable?, confirm:Callable?, cancel:Callable?, meta:Dictionary}
 var control_stack : Array = []
+
+# Debug helpers to avoid spamming logs every frame
+var _last_registered_count: int = -1
+var _native_controls_active_printed: bool = false
 
 # Camera state
 var _cam_yaw: float = 0.0
@@ -51,6 +56,7 @@ var _health_bar: Node = null
 var _dead: bool = false
 
 func _ready():
+	print("[Controller][_ready] character_controller ready on node:", get_path())
 	if placement_preview:
 		placement_preview.visible = false
 
@@ -72,6 +78,20 @@ func _ready():
 
 	# wire up demo UI if present
 	_setup_ui()
+
+	# Try to auto-wire caster if not already set (allow controller to work even without DemoUi)
+	if not caster or not is_instance_valid(caster):
+		var root = get_tree().current_scene if get_tree().current_scene else get_tree().get_root()
+		if root and root.has_node("Caster"):
+			caster = root.get_node("Caster")
+			print("[Controller][_ready] auto-wired caster from scene root:", caster.get_path())
+		else:
+			var found_c = _find_caster_in_node(root)
+			if found_c:
+				caster = found_c
+				print("[Controller][_ready] auto-wired caster by search:", caster.get_path())
+
+	# SpellSlot registration is handled by _setup_ui() (it runs registration and a deferred retry).
 
 
 func _physics_process(delta:float) -> void:
@@ -150,9 +170,18 @@ func handle_movement(delta:float) -> void:
 
 # Input routing: if a control executor is active, forward events to it
 func _unhandled_input(event) -> void:
+	# Do not handle raw left/right mouse button presses here - use InputMap actions instead.
+
 	if control_stack.size() > 0:
+		# If a control is active, forward non-button events (motion, keys, etc.) to it.
+		# Left/Right mouse button presses are handled via InputMap polling in _process.
+		if event is InputEventMouseButton:
+			return
+
 		var top = control_stack[control_stack.size()-1]
 		if top.has("input") and typeof(top["input"]) == TYPE_CALLABLE:
+			var cid = top.has("id") if str(top["id"]) else "<unknown>"
+			print("[Controller][_unhandled_input] forwarding event to control=", cid)
 			top["input"].call(event)
 			# consume the event so the rest of the game doesn't handle it
 			get_viewport().set_input_as_handled()
@@ -175,73 +204,31 @@ func _unhandled_input(event) -> void:
 
 # Public API for control executors
 func request_control(control_id:String, handlers:Dictionary) -> bool:
-	# handlers: input(event) callable, physics_process(delta) callable, confirm() callable, cancel() callable
+	# handlers may contain these keys: "input", "physics_process", "confirm", "cancel", "meta"
+	# Prevent duplicate control IDs
 	for c in control_stack:
-		if c["id"] == control_id:
-			return false # already present
+		if c.has("id") and c["id"] == control_id:
+			return false
+
 	var entry = {
 		"id": control_id,
 		"input": handlers.get("input", null),
 		"physics_process": handlers.get("physics_process", null),
 		"confirm": handlers.get("confirm", null),
 		"cancel": handlers.get("cancel", null),
-		"meta": handlers.get("meta", {})
+		"meta": handlers.get("meta", null),
 	}
+
 	control_stack.append(entry)
-	# show preview if provided
-	if entry["meta"].has("preview_node") and entry["meta"]["preview_node"]:
-		entry["meta"]["preview_node"].visible = true
+	print("[Controller][request_control] PUSH id=", control_id, " new_stack_size=", control_stack.size())
+
+	# If a preview node was supplied in meta, wire it up (and make it visible)
+	if entry["meta"] and typeof(entry["meta"]) == TYPE_DICTIONARY:
+		if entry["meta"].has("preview_node") and entry["meta"]["preview_node"]:
+			placement_preview = entry["meta"]["preview_node"]
+			placement_preview.visible = true
+
 	return true
-
-func release_control(control_id:String) -> void:
-	for i in range(control_stack.size()-1, -1, -1):
-		if control_stack[i]["id"] == control_id:
-			# hide preview if present
-			if control_stack[i]["meta"].has("preview_node") and control_stack[i]["meta"]["preview_node"]:
-				control_stack[i]["meta"]["preview_node"].visible = false
-			control_stack.remove_at(i)
-			return
-
-# Convenience: request a simple placement control that lets the player pick a point on the ground
-func request_placement(control_id:String, max_distance:float, confirm_cb:Callable, cancel_cb=null) -> bool:
-	if not cam:
-		return false
-	# ensure preview exists
-	if placement_preview:
-		placement_preview.visible = true
-
-	var handlers = {}
-
-	handlers["physics_process"] = func(_delta:float) -> void:
-		_update_placement_preview(max_distance)
-
-	handlers["input"] = func(event) -> void:
-		if event is InputEventMouseButton:
-			var mb = event as InputEventMouseButton
-			if mb.pressed and mb.button_index == MOUSE_LEFT:
-				# confirm
-				if confirm_cb:
-					confirm_cb.call(_get_current_placement())
-				release_control(control_id)
-			elif mb.pressed and mb.button_index == MOUSE_RIGHT:
-				# cancel
-				if cancel_cb:
-					cancel_cb.call()
-				release_control(control_id)
-
-	handlers["confirm"] = func() -> void:
-		if confirm_cb:
-			confirm_cb.call(_get_current_placement())
-		release_control(control_id)
-
-	handlers["cancel"] = func() -> void:
-		if cancel_cb:
-			cancel_cb.call()
-		release_control(control_id)
-
-	handlers["meta"] = {"preview_node": placement_preview}
-
-	return request_control(control_id, handlers)
 
 func _update_placement_preview(max_distance:float) -> void:
 	if not cam or not placement_preview:
@@ -280,6 +267,66 @@ func _process(delta:float) -> void:
 
 	# keep mouse capture in sync with focus/pause state
 	_update_mouse_capture()
+
+	# Also log select/cancel actions even when no control is active so we can verify InputMap is firing
+	if control_stack.size() == 0:
+		if has_meta("spellengine_controls_active") and get_meta("spellengine_controls_active"):
+			# If spellengine controls are active (native C++ gizmos), skip handling select here
+			# Let the native control system handle input while active
+			# Print this only once when the state becomes active to avoid spamming logs
+			if not _native_controls_active_printed:
+				print("[Controller][_process] native controls active; skipping select handling")
+				_native_controls_active_printed = true
+		else:
+			# ensure we reset the one-shot flag when native controls are not active
+			_native_controls_active_printed = false
+			if InputMap.has_action("select") and Input.is_action_just_pressed("select"):
+				print("[Controller][_process] select action pressed (no active control)")
+			# Debug: dump registered spell actions only when the count changes to reduce spam
+			var current_count = _registered_spell_actions.size()
+			if current_count != _last_registered_count:
+				print("[Controller][_process] registered_spell_actions_count:", current_count)
+				for r in _registered_spell_actions:
+					if typeof(r) == TYPE_DICTIONARY and r.has("action"):
+						print("[Controller][_process] registered action:", r["action"], "slot:", r.has("slot_node") and r["slot_node"] or "<no-slot>")
+				_last_registered_count = current_count
+			if InputMap.has_action("cancel") and Input.is_action_just_pressed("cancel"):
+				print("[Controller][_process] cancel action pressed (no active control)")
+
+			# Check registered spell hotkeys (simple key_press triggers)
+			for reg in _registered_spell_actions:
+				if typeof(reg) == TYPE_DICTIONARY and reg.has("action"):
+					var an = reg["action"]
+					if InputMap.has_action(an) and Input.is_action_just_pressed(an):
+						print("[Controller] spell action pressed:", an)
+						_start_spell_from_template(reg["spell"], reg["control"])
+
+	if control_stack.size() > 0:
+		var top = control_stack[control_stack.size()-1]
+		# Confirm (select)
+		if InputMap.has_action("select") and Input.is_action_just_pressed("select"):
+			print("[Controller][_process] Input action 'select' pressed -> confirming control id=", top.has("id") if str(top["id"]) else "<unknown>")
+			if top.has("confirm") and typeof(top["confirm"]) == TYPE_CALLABLE:
+				top["confirm"].call()
+			elif top.has("input") and typeof(top["input"]) == TYPE_CALLABLE:
+				# fallback: synthesize a left-click event for input handler
+				var ev = InputEventMouseButton.new()
+				ev.button_index = MOUSE_LEFT
+				ev.pressed = true
+				top["input"].call(ev)
+			release_control(top.has("id") if str(top["id"]) else "")
+
+		# Cancel
+		if InputMap.has_action("cancel") and Input.is_action_just_pressed("cancel"):
+			print("[Controller][_process] Input action 'cancel' pressed -> cancelling control id=", top.has("id") if str(top["id"]) else "<unknown>")
+			if top.has("cancel") and typeof(top["cancel"]) == TYPE_CALLABLE:
+				top["cancel"].call()
+			elif top.has("input") and typeof(top["input"]) == TYPE_CALLABLE:
+				var ev2 = InputEventMouseButton.new()
+				ev2.button_index = MOUSE_RIGHT
+				ev2.pressed = true
+				top["input"].call(ev2)
+			release_control(top.has("id") if str(top["id"]) else "")
 
 	# Pause toggle via InputMap action 'pause' (mapped to Escape in your project). Only when running (not in editor).
 	if not Engine.is_editor_hint():
@@ -332,9 +379,13 @@ func _update_mouse_capture() -> void:
 		return
 
 	var desired_mode = Input.MOUSE_MODE_VISIBLE
-	# Use SceneTree paused state (ignore window focus per request)
-	if capture_mouse and not get_tree().paused:
-		desired_mode = Input.MOUSE_MODE_CAPTURED
+	# If native controls are active (ControlInputController set a meta on this node), keep cursor visible
+	if has_meta("spellengine_controls_active") and get_meta("spellengine_controls_active"):
+		desired_mode = Input.MOUSE_MODE_VISIBLE
+	else:
+		# Use SceneTree paused state (ignore window focus per request)
+		if capture_mouse and not get_tree().paused:
+			desired_mode = Input.MOUSE_MODE_CAPTURED
 
 	if Input.get_mouse_mode() != desired_mode:
 		Input.set_mouse_mode(desired_mode)
@@ -364,11 +415,11 @@ func _ensure_pause_ui() -> void:
 	if menu.has_node("Panel/VBoxContainer/QuitButton"):
 		quit_btn = menu.get_node("Panel/VBoxContainer/QuitButton")
 	if resume_btn:
-		var ok_r = resume_btn.connect("pressed", Callable(self, "_on_resume_pressed"))
+		var _ok_r = resume_btn.connect("pressed", Callable(self, "_on_resume_pressed"))
 		# try to give it focus so it receives input while paused
 		resume_btn.grab_focus()
 	if quit_btn:
-		var ok_q = quit_btn.connect("pressed", Callable(self, "_on_quit_pressed"))
+		var _ok_q = quit_btn.connect("pressed", Callable(self, "_on_quit_pressed"))
 
 	_pause_ui = menu
 
@@ -377,10 +428,76 @@ func _ensure_input_actions() -> void:
 	# Ensure the 'pause' InputMap action exists and map it to Escape so users can toggle pause
 	if not InputMap.has_action("pause"):
 		InputMap.add_action("pause")
+	# Ensure select/cancel actions exist for input mappings (left/right mouse by default)
+	if not InputMap.has_action("select"):
+		InputMap.add_action("select")
+		var ev_sel = InputEventMouseButton.new()
+		ev_sel.button_index = MOUSE_LEFT
+		InputMap.action_add_event("select", ev_sel)
+	if not InputMap.has_action("cancel"):
+		InputMap.add_action("cancel")
+		var ev_can = InputEventMouseButton.new()
+		ev_can.button_index = MOUSE_RIGHT
+		InputMap.action_add_event("cancel", ev_can)
 
 	# Also ensure demo UI update actions exist (non-essential)
 	if not InputMap.has_action("ui_debug"):
 		InputMap.add_action("ui_debug")
+
+
+
+func _register_caster_spell_slots() -> void:
+	# Register SpellSlot children attached to the caster and map their input_action to InputMap actions.
+	# This function now only supports designer-specified InputMap action names stored on the SpellSlot node.
+	if not caster:
+		return
+
+	# clear prior registrations to avoid duplicates when called multiple times
+	_registered_spell_actions.clear()
+
+	var children = caster.get_children()
+	print("[Controller][_register_caster_spell_slots] caster has child_count=", children.size())
+	for child in children:
+		var cname = "<unknown>"
+		if typeof(child) == TYPE_OBJECT:
+			cname = child.get_class()
+		print("[Controller][_register_caster_spell_slots] child:", child.name, "class:", cname, "type:", typeof(child))
+		# If this child has a script attached that defines SpellSlot, try to read its properties
+		var template_val = null
+		var input_val = null
+		if typeof(child) == TYPE_OBJECT:
+			# use get() which returns null if the property doesn't exist or is unset
+			template_val = child.get("template")
+			input_val = child.get("input_action")
+		print("[Controller][_register_caster_spell_slots] -> template:", template_val, "input_action:", input_val)
+
+		# Accept nodes that are explicitly SpellSlot or that expose the expected properties
+		if typeof(child) == TYPE_OBJECT and (child.get_class() == "SpellSlot" or template_val != null or input_val != null):
+			var tmpl = template_val
+			if tmpl == null:
+				print("[Controller][_register_caster_spell_slots] slot has no template, skipping:", child.name)
+				continue
+
+			var action_name = ""
+			if input_val != null:
+				action_name = str(input_val)
+
+			print("[Controller][_register_caster_spell_slots] found SpellSlot:", child.name, "action:", action_name)
+
+			if action_name == "":
+				# no action assigned to this slot; skip registration
+				print("[Controller][_register_caster_spell_slots] slot has empty input_action, skipping:", child.name)
+				continue
+
+			# ensure an InputMap action placeholder exists so designers can bind it in project settings
+			if not InputMap.has_action(action_name):
+				InputMap.add_action(action_name)
+				print("[Controller] created action placeholder for slot:", action_name)
+
+			_registered_spell_actions.append({"action": action_name, "spell": tmpl, "control": null, "slot_node": child})
+			print("[Controller] registered caster slot action:", action_name, "for slot", child.name)
+
+
 
 
 func _find_caster_in_node(n:Node) -> Node:
@@ -424,6 +541,8 @@ func _setup_ui() -> void:
 			print("[Controller] health bar found", _health_bar.get_path())
 		# initialize mana entries based on caster aspects immediately
 		_populate_mana_entries()
+		# Also attempt a deferred registration in case child scripts haven't finished initialising yet
+		call_deferred("_register_caster_spell_slots")
 	else:
 		print("[Controller] DemoUi not found in current scene")
 
@@ -478,6 +597,7 @@ func _populate_mana_entries() -> void:
 				var gt = GradientTexture1D.new()
 				gt.gradient = g
 				gt.width = 128
+				# Debug: show incoming event info
 				# assign to the Polygon2D child named 'ManaPool' inside the Aspect template
 				if node.has_node("ManaPool"):
 					var pool = node.get_node("ManaPool")
@@ -582,6 +702,45 @@ func _on_death() -> void:
 	# release mouse
 	_update_mouse_capture()
 
+
+func _start_spell_from_template(spell_res, _control_desc) -> void:
+	if not spell_res:
+		return
+	print("[Controller][_start_spell_from_template] starting spell from template:", spell_res.get_name())
+	# Build runtime Spell from template's components
+	var sp = Spell.new()
+	if spell_res.has_method("get_components"):
+		sp.set_components(spell_res.get_components())
+	# create context
+	var ctx = SpellContext.new()
+	ctx.set_caster(caster)
+	ctx.set_targets([])
+	ctx.derive_and_set_aspects(sp)
+	# If the control descriptor indicates we need to start a frontend control (e.g., choose_vector),
+	# prefer calling resolve_controls so the engine will prompt for controls before executing remaining components.
+	if engine and engine.has_method("resolve_controls"):
+		print("[Controller] calling engine.resolve_controls() to run controls before execution")
+		# pass self as parent so any ControlManager-created gizmos can be parented under the controller
+		engine.resolve_controls(sp, ctx, self, Callable(self, "_on_control_resolved"))
+	elif engine and engine.has_method("execute_spell"):
+		print("[Controller] engine lacks resolve_controls; falling back to engine.execute_spell()")
+		engine.execute_spell(sp, ctx)
+	else:
+		print("[Controller] engine not available; fallback - executing components locally where possible")
+
+func _on_control_resolved(out) -> void:
+	# Called when engine.resolve_controls finishes. ControlOrchestrator will execute the spell
+	# after successful control resolution, so this callback is primarily for logging and error
+	# handling in the demo controller.
+	print("[Controller][_on_control_resolved] control resolution result:", out)
+	if typeof(out) == TYPE_DICTIONARY and out.has("ok") and out["ok"]:
+		# controls resolved and spell executed by orchestrator
+		return
+	else:
+		# Log error details for debugging
+		printerr("[Controller][_on_control_resolved] control resolution failed:", out)
+
+
 func _on_pause_changed(new_paused: bool) -> void:
 	# ensure the pause UI scene exists and show/hide it
 	_ensure_pause_ui()
@@ -614,5 +773,25 @@ func cancel_top_control() -> void:
 		return
 	var top = control_stack[control_stack.size()-1]
 	if top.has("cancel") and typeof(top["cancel"]) == TYPE_CALLABLE:
+		print("[Controller][cancel_top_control] calling cancel on top id=", top.has("id") if str(top["id"]) else "<unknown>")
 		top["cancel"].call()
 	release_control(top["id"])
+
+
+func release_control(control_id:String) -> bool:
+	# Remove a control by id and perform cleanup (hide preview when no controls remain)
+	for i in range(control_stack.size()-1, -1, -1):
+		var c = control_stack[i]
+		if c.has("id") and c["id"] == control_id:
+			# call cancel hook if present (but don't double-call if caller already invoked it)
+			if c.has("meta") and typeof(c["meta"]) == TYPE_DICTIONARY and c["meta"].has("preview_node"):
+				var pn = c["meta"]["preview_node"]
+				if pn and pn is Node:
+					pn.visible = false
+			control_stack.remove_at(i)
+			# hide the shared placement_preview if no controls left
+			if control_stack.size() == 0 and placement_preview:
+				placement_preview.visible = false
+			return true
+	# not found
+	return false

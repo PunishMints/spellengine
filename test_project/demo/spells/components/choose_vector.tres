@@ -1,0 +1,12 @@
+[gd_resource type="SpellComponent" format=3 uid="uid://choosevector"]
+
+[resource]
+executor_id = "choose_vector_v1"
+params = {
+"max_distance": 200.0,
+"mode": "vector"
+}
+base_params = {
+"max_distance": 200.0,
+"mode": "vector"
+}

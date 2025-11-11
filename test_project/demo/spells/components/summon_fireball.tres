@@ -1,0 +1,20 @@
+[gd_resource type="SpellComponent" load_steps=2 format=3 uid="uid://dfi5b8880bknr"]
+
+[ext_resource type="PackedScene" uid="uid://c78ac7hkjacme" path="res://demo/scenes/projectile.tscn" id="1_0k26c"]
+
+[resource]
+executor_id = "summon_scene_v1"
+cost = 10.0
+params = {
+"offset": Vector3(0, 2, 0),
+"position_from_caster": true,
+"scene": ExtResource("1_0k26c")
+}
+base_params = {
+"offset": Vector3(0, 2, 0),
+"position_from_caster": true,
+"scene": ExtResource("1_0k26c")
+}
+aspects_contributions = {
+"fire": 1.0
+}

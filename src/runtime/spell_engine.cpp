@@ -7,8 +7,10 @@
 #include "spellengine/spell_caster.hpp"
 #include "spellengine/synergy_registry.hpp"
 #include <godot_cpp/variant/callable.hpp>
+#include "spellengine/control_orchestrator.hpp"
 #include "spellengine/aspect.hpp"
 #include <algorithm>
+#include <cmath>
 
 using namespace godot;
 
@@ -128,7 +130,13 @@ void SpellEngine::execute_spell(Ref<Spell> spell, Ref<SpellContext> ctx) {
         }
 
         ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
-        if (reg && reg->has_executor(comp->get_executor_id())) {
+        // Skip control-only components (those that begin with choose_ or select_)
+        // They are handled earlier by ControlOrchestrator via resolve_controls and
+        // should not be executed as normal executors during execute_spell.
+        String comp_exec_id = comp->get_executor_id();
+        if (comp_exec_id.begins_with("choose_") || comp_exec_id.begins_with("select_")) {
+            if (verbose_composition) UtilityFunctions::print(String("SpellEngine: skipping control-only component execution for: ") + comp_exec_id);
+        } else if (reg && reg->has_executor(comp->get_executor_id())) {
             Ref<IExecutor> exec = reg->get_executor(comp->get_executor_id());
             if (exec.is_valid()) {
                 // ensure the resolved params carry the cast id so targets can group events
@@ -749,8 +757,162 @@ void SpellEngine::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_merge_mode_mana_multiplier", "mode", "multiplier"), &SpellEngine::set_merge_mode_mana_multiplier);
     ClassDB::bind_method(D_METHOD("get_merge_mode_mana_multiplier", "mode"), &SpellEngine::get_merge_mode_mana_multiplier);
     ClassDB::bind_method(D_METHOD("get_adjusted_mana_costs", "spell", "context"), &SpellEngine::get_adjusted_mana_costs);
+    ClassDB::bind_method(D_METHOD("collect_controls", "spell", "context"), &SpellEngine::collect_controls);
+    ClassDB::bind_method(D_METHOD("validate_control_result", "mode", "result"), &SpellEngine::validate_control_result);
+    ClassDB::bind_method(D_METHOD("resolve_controls", "spell", "context", "parent", "on_complete"), &SpellEngine::resolve_controls);
+    ClassDB::bind_method(D_METHOD("_resolve_controls_forward", "out", "orch", "orig_cb"), &SpellEngine::_resolve_controls_forward);
     ClassDB::bind_method(D_METHOD("set_verbose_composition", "enabled"), &SpellEngine::set_verbose_composition);
     ClassDB::bind_method(D_METHOD("get_verbose_composition"), &SpellEngine::get_verbose_composition);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "verbose_composition"), "set_verbose_composition", "get_verbose_composition");
 
+}
+
+void SpellEngine::resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node *parent, const Callable &on_complete) {
+    if (!spell.is_valid() || !ctx.is_valid()) {
+        Array args;
+        Dictionary out;
+        out["ok"] = false;
+        out["error"] = String("invalid_args");
+        args.append(out);
+        if (on_complete.is_valid()) on_complete.callv(args);
+        return;
+    }
+
+    ControlOrchestrator *orch = memnew(ControlOrchestrator());
+
+    // Create a wrapper callable bound to this SpellEngine instance that will
+    // receive the orchestrator's out dictionary, then forward the result to the
+    // original on_complete callable. We bind the raw pointer here; the
+    // orchestrator will schedule its own deferred cleanup after the
+    // completion callback returns to avoid use-after-free.
+    Callable wrapper = Callable(this, "_resolve_controls_forward").bind(Variant(orch), Variant(on_complete));
+
+    // Start orchestration (async). The orchestrator will call the wrapper with a single
+    // Dictionary argument (the result), which will be forwarded by the engine.
+    orch->resolve_controls(spell, ctx, parent, wrapper);
+}
+
+void SpellEngine::_resolve_controls_forward(const Variant &out, const Variant &orch_v, const Variant &orig_cb_v) {
+    // Forward the result to the original callback, then cleanup the orchestrator.
+    // orig_cb_v should be a Callable
+    if (orig_cb_v.get_type() == Variant::CALLABLE) {
+        Callable orig = orig_cb_v;
+        Array args;
+        args.append(out);
+        orig.callv(args);
+    }
+
+    // Do NOT delete the orchestrator here: the orchestrator may still be
+    // executing on the call stack when this forwarder is invoked. The
+    // orchestrator is held by a Ref in resolve_controls and will be released
+    // when all references go out of scope. Avoid explicit memdelete here to
+    // prevent use-after-free crashes.
+}
+
+Array SpellEngine::collect_controls(Ref<Spell> spell, Ref<SpellContext> ctx) {
+    Array out;
+    if (!spell.is_valid()) return out;
+
+    TypedArray<Ref<SpellComponent>> comps = spell->get_components();
+    ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
+
+    for (int i = 0; i < comps.size(); ++i) {
+        Ref<SpellComponent> comp = comps[i];
+        if (!comp.is_valid()) continue;
+        String exec_id = comp->get_executor_id();
+        // simple heuristic: control executors are those starting with "choose_" or "select_"
+        if (exec_id.begins_with("choose_") || exec_id.begins_with("select_")) {
+            Dictionary d;
+            d["index"] = i;
+            d["executor_id"] = exec_id;
+            d["base_params"] = comp->get_base_params();
+            // query param schema from registry if available
+            if (reg && reg->has_executor(exec_id)) {
+                Ref<IExecutor> ex = reg->get_executor(exec_id);
+                if (ex.is_valid()) d["param_schema"] = ex->get_param_schema();
+            }
+            out.append(d);
+        }
+    }
+    return out;
+}
+
+bool SpellEngine::validate_control_result(const String &mode, const Dictionary &result) const {
+    // Basic server-side sanity checks. Reject NaN, Inf, and values outside reasonable bounds.
+    auto is_finite = [&](const Variant &v)->bool{
+        if (v.get_type() == Variant::FLOAT || v.get_type() == Variant::INT) {
+            double d = (double)v;
+            if (std::isnan(d) || std::isinf(d)) return false;
+            return true;
+        }
+        return true;
+    };
+
+    const double MAX_COORD = 1e6;
+    const double MAX_RADIUS = 1e4;
+    const double MAX_HEIGHT = 1e5;
+
+    if (mode.find("vector") != -1 || mode.find("position") != -1) {
+        if (result.has("chosen_vector")) {
+            Variant v = result["chosen_vector"];
+            if (v.get_type() == Variant::VECTOR3) {
+                Vector3 vv = v;
+                if (!is_finite(vv.x) || !is_finite(vv.y) || !is_finite(vv.z)) return false;
+                if (std::abs(vv.x) > MAX_COORD || std::abs(vv.y) > MAX_COORD || std::abs(vv.z) > MAX_COORD) return false;
+            }
+        }
+        if (result.has("chosen_position")) {
+            Variant v = result["chosen_position"];
+            if (v.get_type() == Variant::VECTOR3) {
+                Vector3 vv = v;
+                if (!is_finite(vv.x) || !is_finite(vv.y) || !is_finite(vv.z)) return false;
+                if (std::abs(vv.x) > MAX_COORD || std::abs(vv.y) > MAX_COORD || std::abs(vv.z) > MAX_COORD) return false;
+            }
+        }
+    } else if (mode.find("polygon2d") != -1) {
+        if (!result.has("chosen_polygon2d")) return false;
+        Variant pv = result["chosen_polygon2d"];
+        if (pv.get_type() != Variant::ARRAY) return false;
+        Array pts = pv;
+        if (pts.size() < 3) return false;
+        for (int i = 0; i < pts.size(); ++i) {
+            Variant p = pts[i];
+            if (p.get_type() == Variant::VECTOR2) {
+                Vector2 v = p;
+                if (!is_finite(v.x) || !is_finite(v.y)) return false;
+                if (std::abs(v.x) > MAX_COORD || std::abs(v.y) > MAX_COORD) return false;
+            }
+        }
+    } else if (mode.find("polygon3d") != -1) {
+        if (!result.has("chosen_polygon3d")) return false;
+        Variant pv = result["chosen_polygon3d"];
+        if (pv.get_type() != Variant::ARRAY) return false;
+        Array pts = pv;
+        if (pts.size() < 3) return false;
+        for (int i = 0; i < pts.size(); ++i) {
+            Variant p = pts[i];
+            if (p.get_type() == Variant::VECTOR3) {
+                Vector3 v = p;
+                if (!is_finite(v.x) || !is_finite(v.y) || !is_finite(v.z)) return false;
+                if (std::abs(v.x) > MAX_COORD || std::abs(v.y) > MAX_COORD || std::abs(v.z) > MAX_COORD) return false;
+            }
+        }
+    } else if (mode == "cylinder") {
+        if (!result.has("center")) return false;
+        if (!result.has("radius") || !result.has("height")) return false;
+        Variant c = result["center"];
+        if (c.get_type() != Variant::VECTOR3) return false;
+        Vector3 v = c;
+        if (!is_finite(v.x) || !is_finite(v.y) || !is_finite(v.z)) return false;
+        double r = 0.0, h = 0.0;
+        Variant rv = result["radius"];
+        Variant hv = result["height"];
+        if (rv.get_type() == Variant::INT || rv.get_type() == Variant::FLOAT) r = (double)rv;
+        if (hv.get_type() == Variant::INT || hv.get_type() == Variant::FLOAT) h = (double)hv;
+        if (!is_finite(r) || !is_finite(h)) return false;
+        if (r <= 0.0 || r > MAX_RADIUS) return false;
+        if (h <= 0.0 || h > MAX_HEIGHT) return false;
+    }
+
+    return true;
 }

@@ -1,5 +1,5 @@
 {
-  "executor_ids": ["damage_v1", "dot_v1", "knockback_v1"],
+  "executor_ids": ["damage_v1", "dot_v1", "knockback_v1", "summon_scene_v1", "force_v1"],
   "executor_schemas": {
     "damage_v1": {
       "amount": { "type": "float", "default": 0.0, "desc": "Amount of damage to apply" },

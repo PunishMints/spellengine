@@ -58,7 +58,21 @@ public:
     // Returns a Dictionary: {"costs_per_aspect": Dictionary, "total_mana": float, "per_component": Dictionary}
     Dictionary get_adjusted_mana_costs(Ref<Spell> spell, Ref<SpellContext> ctx);
 
+    // Collect control components that require interactive resolution before execution.
+    // Returns an ordered Array of Dictionaries with keys: index, executor_id, base_params, param_schema
+    Array collect_controls(Ref<Spell> spell, Ref<SpellContext> ctx);
+    // High-level wrapper: resolve interactive controls for a spell using ControlOrchestrator.
+    // This is a safe entrypoint for GDScript and will create+destroy the orchestrator.
+    void resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node *parent, const Callable &on_complete);
+    // Validate a control result server-side. Returns true if valid.
+    bool validate_control_result(const String &mode, const Dictionary &result) const;
+
     // Verbose composition logging control
     void set_verbose_composition(bool v);
     bool get_verbose_composition() const;
+
+private:
+    // Internal forwarder used as the bound callable target. Receives the orchestrator's
+    // out dictionary and two bound variants: orch (Object) and original callback (Callable).
+    void _resolve_controls_forward(const Variant &out, const Variant &orch_v, const Variant &orig_cb_v);
 };

@@ -28,6 +28,14 @@ void SpellTemplate::set_components(const TypedArray<Ref<SpellComponent>> &p_comp
     components = p_components;
 }
 
+TypedArray<Ref<ControlDescriptor>> SpellTemplate::get_controls() const {
+    return controls;
+}
+
+void SpellTemplate::set_controls(const TypedArray<Ref<ControlDescriptor>> &p_controls) {
+    controls = p_controls;
+}
+
 void SpellTemplate::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_name"), &SpellTemplate::get_name);
     ClassDB::bind_method(D_METHOD("set_name", "name"), &SpellTemplate::set_name);
@@ -39,5 +47,9 @@ void SpellTemplate::_bind_methods() {
 
     ClassDB::bind_method(D_METHOD("get_components"), &SpellTemplate::get_components);
     ClassDB::bind_method(D_METHOD("set_components", "components"), &SpellTemplate::set_components);
-    ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "components"), "set_components", "get_components");
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "components", PROPERTY_HINT_RESOURCE_TYPE, "SpellComponent"), "set_components", "get_components");
+
+    ClassDB::bind_method(D_METHOD("get_controls"), &SpellTemplate::get_controls);
+    ClassDB::bind_method(D_METHOD("set_controls", "controls"), &SpellTemplate::set_controls);
+    ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "controls", PROPERTY_HINT_RESOURCE_TYPE, "ControlDescriptor"), "set_controls", "get_controls");
 }

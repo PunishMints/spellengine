@@ -2,6 +2,7 @@
 
 [resource]
 spec = {
+"color": Color(0.6117647, 1, 0.93630517, 1),
 "component_aspects": ["water", "wind"],
 "default_scalers": {
 "amount": 0.85,

@@ -2,6 +2,7 @@
 #include "spellengine/item_data.hpp"
 #include "spellengine/aspect.hpp"
 #include "spellengine/spell_component.hpp"
+#include "spellengine/control_descriptor.hpp"
 #include "spellengine/executor_registry.hpp"
 #include "spellengine/spell_context.hpp"
 #include "spellengine/spell_template.hpp"
@@ -15,6 +16,13 @@
 #include "spellengine/status_effect.hpp"
 #include "spellengine/spell_caster.hpp"
 #include "spellengine/synergy_registry.hpp"
+#include "spellengine/control_preset.hpp"
+#include "spellengine/control_gizmo.hpp"
+#include "spellengine/control_manager.hpp"
+#include "spellengine/control_orchestrator.hpp"
+#include "spellengine/control_input_controller.hpp"
+#include "spellengine/control_preview_factory.hpp"
+#include "spellengine/control_manager.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -35,6 +43,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	GDREGISTER_CLASS(ItemData)
 	GDREGISTER_CLASS(Aspect)
 	GDREGISTER_CLASS(SpellComponent)
+	GDREGISTER_CLASS(ControlDescriptor)
 	GDREGISTER_CLASS(ExecutorRegistry)
 	GDREGISTER_CLASS(SpellContext)
 	GDREGISTER_CLASS(SpellTemplate)
@@ -46,6 +55,12 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
 	GDREGISTER_CLASS(KnockbackExecutor)
 	GDREGISTER_CLASS(StatusEffect)
 	GDREGISTER_CLASS(SpellCaster)
+	GDREGISTER_CLASS(ControlPreset)
+	GDREGISTER_CLASS(ControlGizmo)
+	GDREGISTER_CLASS(ControlManager)
+	GDREGISTER_CLASS(ControlOrchestrator)
+	GDREGISTER_CLASS(ControlInputController)
+	GDREGISTER_CLASS(ControlPreviewFactory)
 	GDREGISTER_CLASS(SynergyRegistry)
 
 	// Create and register default executors

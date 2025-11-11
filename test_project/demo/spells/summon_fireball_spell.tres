@@ -1,0 +1,10 @@
+[gd_resource type="SpellTemplate" load_steps=4 format=3 uid="uid://dqw8mxn7by3hn"]
+
+[ext_resource type="SpellComponent" uid="uid://dfi5b8880bknr" path="res://demo/spells/components/summon_fireball.tres" id="1_qh5hg"]
+[ext_resource type="SpellComponent" uid="uid://choosevector" path="res://demo/spells/components/choose_vector.tres" id="2_choose"]
+[ext_resource type="SpellComponent" uid="uid://sfklweio32li" path="res://demo/spells/components/force_up.tres" id="3_8oiek"]
+
+[resource]
+name = "Summon Fireball"
+description = "Summons a fireball with interactive force direction"
+components = Array[SpellComponent]([ExtResource("1_qh5hg"), ExtResource("2_choose"), ExtResource("3_8oiek")])

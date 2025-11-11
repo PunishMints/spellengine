@@ -1,0 +1,5 @@
+[gd_resource type="SpellComponent" format=3 uid="uid://sfklweio32li"]
+
+[resource]
+executor_id = "force_v1"
+cost = 5.0

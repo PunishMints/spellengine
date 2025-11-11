@@ -1,0 +1,5 @@
+[gd_resource type="SpellTemplate" format=3 uid="uid://b71ntxmprveqi"]
+
+[resource]
+name = "Summon Fireball"
+description = "Simple summon fire - test"

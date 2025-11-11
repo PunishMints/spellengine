@@ -16,10 +16,17 @@
 #include "spellengine/damage_executor.hpp"
 #include "spellengine/dot_executor.hpp"
 #include "spellengine/knockback_executor.hpp"
+#include "spellengine/summon_executor.hpp"
+#include "spellengine/force_executor.hpp"
 #include "spellengine/status_effect.hpp"
 #include "spellengine/spell_caster.hpp"
 #include "spellengine/synergy_registry.hpp"
 #include "spellengine/synergy.hpp"
+#include "spellengine/control_gizmo.hpp"
+#include "spellengine/control_manager.hpp"
+#include "spellengine/control_orchestrator.hpp"
+#include "spellengine/control_input_controller.hpp"
+#include "spellengine/control_preview_factory.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -50,8 +57,15 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level)
     GDREGISTER_CLASS(DamageExecutor)
     GDREGISTER_CLASS(DotExecutor)
     GDREGISTER_CLASS(KnockbackExecutor)
+    GDREGISTER_CLASS(SummonExecutor)
+    GDREGISTER_CLASS(ForceExecutor)
     GDREGISTER_CLASS(StatusEffect)
     GDREGISTER_CLASS(SpellCaster)
+    GDREGISTER_CLASS(ControlGizmo)
+    GDREGISTER_CLASS(ControlManager)
+    GDREGISTER_CLASS(ControlOrchestrator)
+    GDREGISTER_CLASS(ControlInputController)
+    GDREGISTER_CLASS(ControlPreviewFactory)
     GDREGISTER_CLASS(Synergy)
     GDREGISTER_CLASS(SynergyRegistry)
 

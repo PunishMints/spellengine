@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/variant/typed_array.hpp>
 #include "spellengine/spell_component.hpp"
+#include "spellengine/control_descriptor.hpp"
 
 using namespace godot;
 
@@ -17,6 +18,7 @@ private:
     String name = "New Spell";
     String description = "";
     TypedArray<Ref<SpellComponent>> components;
+    TypedArray<Ref<ControlDescriptor>> controls;
 
 public:
     String get_name() const;
@@ -27,4 +29,7 @@ public:
 
     TypedArray<Ref<SpellComponent>> get_components() const;
     void set_components(const TypedArray<Ref<SpellComponent>> &p_components);
+
+    TypedArray<Ref<ControlDescriptor>> get_controls() const;
+    void set_controls(const TypedArray<Ref<ControlDescriptor>> &p_controls);
 };
