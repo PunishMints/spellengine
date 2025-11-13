@@ -103,6 +103,7 @@ void ForceExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> component
                     continue;
                 }
                 UtilityFunctions::print(String("ForceExecutor: applying central impulse (native) to RigidBody3D '") + node->get_name() + String("' -> ") + Variant(force_vec).operator String());
+                rb->set("freeze", Variant(false));
                 rb->apply_central_impulse(force_vec);
                 continue;
             }

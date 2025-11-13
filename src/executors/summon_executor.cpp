@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/classes/packed_scene.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/classes/rigid_body3d.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 
 using namespace godot;
@@ -254,14 +255,29 @@ void SummonExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> componen
         // Mark the spawned instance as inert until a later component (e.g. Force)
         // activates it. This prevents the projectile from immediately being
         // simulated/affected by physics before the player confirms a control.
-        // We store a simple meta flag 'spell_inert' and disable physics processing
-        // on the node where possible.
+        // We store a simple meta flag 'spell_inert' and attempt to disable
+        // physics on the instance. For RigidBody3D we switch the body into
+        // MODE_STATIC and set it sleeping (and record the previous mode so a
+        // later component can restore it). For other nodes we fall back to
+        // disabling physics processing on the node.
         inst->set_meta(String("spell_inert"), Variant(true));
-        // Try to disable physics processing on the instance so it remains inert.
-        // This is a best-effort action; if the instance is a RigidBody3D its
-        // internal physics may still run, but many custom projectiles will
-        // respect physics_process being disabled on the root node.
-        inst->set_physics_process(false);
+        // If the instance is a RigidBody3D, set it to static and sleep it.
+        RigidBody3D *rb = Object::cast_to<RigidBody3D>(inst);
+        if (rb) {
+            // Save previous mode so activators can restore it later (use property access
+            // since the generated binding may not expose get_mode/set_mode directly).
+            int prev_mode = 0;
+            Variant prev_mode_v = rb->get("mode");
+            if (prev_mode_v.get_type() == Variant::Type::INT) prev_mode = (int)prev_mode_v;
+            inst->set_meta(String("spell_prev_mode"), Variant(prev_mode));
+            // Set mode to STATIC (1) and put the body to sleep. Using property set to avoid
+            // depending on presence of generated helpers for set_mode.
+            rb->set("mode", Variant(1));
+            rb->set("freeze", Variant(true));
+        } else {
+            // Best-effort for generic nodes
+            inst->set_physics_process(false);
+        }
         ctx->set_results(cur_results);
 
         UtilityFunctions::print(String("SummonExecutor: appended spawned instance to ctx.targets and ctx.results; targets_size=") + String::num(cur_targets.size()));

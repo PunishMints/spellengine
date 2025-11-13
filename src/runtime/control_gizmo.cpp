@@ -15,6 +15,8 @@
 #include <godot_cpp/classes/immediate_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/rigid_body3d.hpp>
 
 using namespace godot;
 
@@ -246,15 +248,79 @@ void ControlGizmo::set_points(const Array &pnts) {
     // Update preview geometry for the current points.
 
         if (points.size() > 1) {
-            // Build an ArrayMesh with a single line segment
+            // Build an arc preview using projectile physics properties.
+            // Try to locate a nearby RigidBody3D (the spawned projectile) to read
+            // its mass and gravity_scale. If not found, fall back to defaults.
+            RigidBody3D *found_body = nullptr;
+            Node *search_root = get_parent();
+            real_t max_search_dist = 4.0;
+            if (search_root) {
+                Array stack;
+                stack.append(Variant(search_root));
+                while (stack.size() > 0 && !found_body) {
+                    Variant v = stack.pop_back();
+                    if (v.get_type() == Variant::OBJECT) {
+                        Object *o = v;
+                        Node *n = Object::cast_to<Node>(o);
+                        if (!n) continue;
+                        // check if this node is a RigidBody3D
+                        RigidBody3D *rb = Object::cast_to<RigidBody3D>(n);
+                        if (rb) {
+                            Transform3D gt = rb->get_global_transform();
+                            Vector3 diff = gt.origin - p0;
+                            if (diff.length() <= max_search_dist) {
+                                found_body = rb;
+                                break;
+                            }
+                        }
+                        // push children to stack
+                        for (int i = 0; i < n->get_child_count(); ++i) {
+                            Node *c = n->get_child(i);
+                            if (c) stack.append(Variant(c));
+                        }
+                    }
+                }
+            }
+
+            double body_mass = 1.0;
+            double gravity_scale = 1.0;
+            if (found_body) {
+                Variant mv = found_body->get("mass");
+                if (mv.get_type() == Variant::Type::FLOAT || mv.get_type() == Variant::Type::INT) body_mass = (double)mv;
+                Variant gv = found_body->get("gravity_scale");
+                if (gv.get_type() == Variant::Type::FLOAT || gv.get_type() == Variant::Type::INT) gravity_scale = (double)gv;
+            }
+
+            // Determine initial impulse vector from chosen world points: p1 - p0
+            Vector3 impulse = p1 - p0;
+            // Convert impulse to approximate initial velocity: v = impulse / m
+            Vector3 v0 = Vector3((real_t)(impulse.x / (body_mass > 0 ? body_mass : 1.0)), (real_t)(impulse.y / (body_mass > 0 ? body_mass : 1.0)), (real_t)(impulse.z / (body_mass > 0 ? body_mass : 1.0)));
+
+            // Gravity magnitude from ProjectSettings (fallback 9.8)
+            Variant gv_set = ProjectSettings::get_singleton()->get_setting(String("physics/3d/default_gravity"));
+            double gravity = 9.8;
+            if (gv_set.get_type() == Variant::Type::FLOAT || gv_set.get_type() == Variant::Type::INT) gravity = (double)gv_set;
+            Vector3 gvec = Vector3(0, (real_t)(-gravity * gravity_scale), 0);
+
+            // Sample the trajectory as a line strip
+            const int SAMPLE_COUNT = 32;
+            const double MAX_TIME = 4.0; // seconds
+            PackedVector3Array verts;
+            verts.resize(SAMPLE_COUNT);
+            for (int s = 0; s < SAMPLE_COUNT; ++s) {
+                double t = (MAX_TIME * s) / (SAMPLE_COUNT - 1);
+                Vector3 pos = p0 + v0 * (real_t)t + 0.5 * gvec * (real_t)(t * t);
+                // Convert sampled world-space position into this gizmo's local
+                // space so the ArrayMesh vertices line up with the start/end
+                // spheres (which are set using lp0/lp1 above).
+                verts[s] = inv.xform(pos);
+            }
+
             Ref<ArrayMesh> am = memnew(ArrayMesh());
             Array arrays;
             arrays.resize(Mesh::ARRAY_MAX);
-            PackedVector3Array verts;
-            verts.append(lp0);
-            verts.append(lp1);
             arrays[Mesh::ARRAY_VERTEX] = verts;
-            am->add_surface_from_arrays(Mesh::PRIMITIVE_LINES, arrays);
+            am->add_surface_from_arrays(Mesh::PRIMITIVE_LINE_STRIP, arrays);
             mi->set_mesh(am);
 
             // Ensure end marker is visible and positioned

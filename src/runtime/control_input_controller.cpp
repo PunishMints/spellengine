@@ -5,6 +5,7 @@
 #include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/classes/input_event_mouse_button.hpp>
 #include <godot_cpp/classes/input_event_mouse_motion.hpp>
@@ -94,7 +95,39 @@ void ControlInputController::_input(const Ref<InputEvent> &event) {
     // Get camera from viewport if available
     // Use explicit camera if set; otherwise fall back to viewport camera
     Camera3D *cam = camera;
-    
+    // If player pressed the 'pause' action while controls are active, cancel
+    // the active gizmo(s) and notify the parent controller to release input.
+    Input *inp_single = Input::get_singleton();
+    if (inp_single && inp_single->is_action_just_pressed(String("pause")) && gizmo_list.size() > 0) {
+        // Cancel active gizmos (call cancel() which will invoke the completion)
+        for (int i = 0; i < gizmo_list.size(); ++i) {
+            Variant v = gizmo_list[i];
+            if (v.get_type() == Variant::OBJECT) {
+                Object *o = v;
+                ControlGizmo *g = Object::cast_to<ControlGizmo>(o);
+                if (g) g->cancel();
+            }
+        }
+        // Also notify the parent (likely the GDScript controller) to cancel
+        // top-level control handling and update UI. Use call_deferred to avoid
+        // reentrancy during input dispatch.
+        Node *p = get_parent();
+        if (p && p->has_method(String("cancel_top_control"))) {
+            p->call_deferred(String("cancel_top_control"));
+        }
+        // Prevent the parent from responding to the same 'pause' action by
+        // setting a short-lived ignore window (monotonic ticks in ms).
+        // This avoids the game actually pausing when the player hits Esc to
+        // cancel controls.
+        if (p) {
+            int64_t now_ms = (int64_t)Time::get_singleton()->get_ticks_msec();
+            p->set_meta(String("spellengine_ignore_actions_until"), Variant(now_ms + (int64_t)300));
+        }
+        Viewport *vp_pre2 = get_viewport();
+        if (vp_pre2) vp_pre2->set_input_as_handled();
+        return;
+    }
+
         // If any gizmo is active, pre-mark the event as handled so other systems
         // won't react while controls are active.
         Viewport *vp_pre = get_viewport();

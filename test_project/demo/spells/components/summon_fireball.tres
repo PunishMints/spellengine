@@ -6,12 +6,12 @@
 executor_id = "summon_scene_v1"
 cost = 10.0
 params = {
-"offset": Vector3(0, 2, 0),
+"offset": Vector3(0, 4, 0),
 "position_from_caster": true,
 "scene": ExtResource("1_0k26c")
 }
 base_params = {
-"offset": Vector3(0, 2, 0),
+"offset": Vector3(0, 4, 0),
 "position_from_caster": true,
 "scene": ExtResource("1_0k26c")
 }

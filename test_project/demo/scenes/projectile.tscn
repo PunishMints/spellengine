@@ -10,7 +10,9 @@ radius = 0.2
 height = 0.4
 
 [node name="Projectile" type="RigidBody3D"]
+sleeping = true
 script = ExtResource("1_58du0")
+lifetime = 30.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("SphereShape3D_svjdq")

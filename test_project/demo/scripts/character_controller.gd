@@ -345,6 +345,16 @@ func _process(delta:float) -> void:
 	# Pause toggle via InputMap action 'pause' (mapped to Escape in your project). Only when running (not in editor).
 	if not Engine.is_editor_hint():
 		if InputMap.has_action("pause") and Input.is_action_just_pressed("pause"):
+			# Respect the C++ ignore window: the native input controller sets
+			# `spellengine_ignore_actions_until` (monotonic ticks ms) when it
+			# cancels controls so that this script doesn't immediately re-open
+			# the pause UI. If the ignore window is active, skip handling pause.
+			if has_meta("spellengine_ignore_actions_until"):
+				var until = int(get_meta("spellengine_ignore_actions_until"))
+				if Time.get_ticks_msec() < until:
+					# still within ignore window — do not toggle pause
+					return
+
 			var new_paused = not get_tree().paused
 			# If native controls are active, only toggle the input/pause UI (keep SceneTree running)
 			if has_meta("spellengine_controls_active") and get_meta("spellengine_controls_active"):
