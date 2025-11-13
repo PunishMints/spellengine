@@ -10,6 +10,7 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/rigid_body3d.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
+#include "spellengine/spell_caster.hpp"
 
 using namespace godot;
 
@@ -194,94 +195,229 @@ void SummonExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> componen
     t.basis = b;
     t.origin = pos;
 
-    // Instantiate and add to scene. Prefer caster's current scene if available.
-    Node *inst = ps->instantiate();
-    if (!inst) {
-        UtilityFunctions::print(String("SummonExecutor: instantiate() returned null for PackedScene"));
-    } else {
-        // Print the instance id for debugging
-    int64_t iid = inst->get_instance_id();
-    UtilityFunctions::print(String("SummonExecutor: instantiated PackedScene instance_id=") + Variant(iid).operator String());
+    // Helper: parse a Vector3 from a Variant that may be an ARRAY or VECTOR3
+    auto parse_vec3 = [](const Variant &v, const Vector3 &fallback) -> Vector3 {
+        if (v.get_type() == Variant::VECTOR3) return Vector3(v);
+        if (v.get_type() == Variant::ARRAY) {
+            Array a = v;
+            double x = 0, y = 0, z = 0;
+            if (a.size() >= 1) x = (double)a[0];
+            if (a.size() >= 2) y = (double)a[1];
+            if (a.size() >= 3) z = (double)a[2];
+            return Vector3((float)x, (float)y, (float)z);
+        }
+        return fallback;
+    };
+
+    // Generate spawn positions according to optional pattern parameters.
+    Array spawn_positions;
+    spawn_positions.append(pos);
+    if (resolved_params.has("pattern_type")) {
+        String ptype = resolved_params["pattern_type"];
+        int count = 1;
+        if (resolved_params.has("pattern_count")) {
+            Variant pc = resolved_params["pattern_count"];
+            if (pc.get_type() == Variant::Type::INT) count = (int)pc;
+            else if (pc.get_type() == Variant::Type::FLOAT) count = (int)((double)pc);
+        }
+        if (count < 1) count = 1;
+
+        if (ptype == String("linear")) {
+            double spacing = 1.0;
+            if (resolved_params.has("pattern_spacing")) spacing = (double)resolved_params["pattern_spacing"];
+            Vector3 dir = parse_vec3(resolved_params.has("pattern_direction") ? resolved_params["pattern_direction"] : Variant(), Vector3(1,0,0));
+            if (dir.length() == 0) dir = Vector3(1,0,0);
+            dir = dir.normalized();
+            Vector3 start_off = parse_vec3(resolved_params.has("pattern_start_offset") ? resolved_params["pattern_start_offset"] : Variant(), Vector3(0,0,0));
+            spawn_positions.clear();
+            for (int i = 0; i < count; ++i) {
+                Vector3 p = pos + start_off + dir * (float)(i * spacing);
+                spawn_positions.append(p);
+            }
+        } else if (ptype == String("circular")) {
+            double radius = 1.0;
+            if (resolved_params.has("pattern_radius")) radius = (double)resolved_params["pattern_radius"];
+            String plane = String("xz");
+            if (resolved_params.has("pattern_plane") && resolved_params["pattern_plane"].get_type() == Variant::STRING) plane = resolved_params["pattern_plane"];
+            double start_angle = 0.0;
+            if (resolved_params.has("pattern_start_angle")) start_angle = (double)resolved_params["pattern_start_angle"];
+            spawn_positions.clear();
+            for (int i = 0; i < count; ++i) {
+                double a = start_angle + (2.0 * Math_PI * (double)i) / (double)count;
+                Vector3 off = Vector3();
+                if (plane == String("xy")) off = Vector3((float)(radius * cos(a)), (float)(radius * sin(a)), 0.0f);
+                else if (plane == String("yz")) off = Vector3(0.0f, (float)(radius * cos(a)), (float)(radius * sin(a)));
+                else /* xz */ off = Vector3((float)(radius * cos(a)), 0.0f, (float)(radius * sin(a)));
+                Vector3 start_off = parse_vec3(resolved_params.has("pattern_start_offset") ? resolved_params["pattern_start_offset"] : Variant(), Vector3(0,0,0));
+                spawn_positions.append(pos + start_off + off);
+            }
+        } else if (ptype == String("rect" ) || ptype == String("rectangular")) {
+            int rows = 1;
+            int cols = count;
+            if (resolved_params.has("pattern_rows")) {
+                Variant pr = resolved_params["pattern_rows"];
+                if (pr.get_type() == Variant::Type::INT) rows = (int)pr;
+                else if (pr.get_type() == Variant::Type::FLOAT) rows = (int)((double)pr);
+            }
+            if (resolved_params.has("pattern_columns")) {
+                Variant pc2 = resolved_params["pattern_columns"];
+                if (pc2.get_type() == Variant::Type::INT) cols = (int)pc2;
+                else if (pc2.get_type() == Variant::Type::FLOAT) cols = (int)((double)pc2);
+            }
+            double spacing = 1.0;
+            if (resolved_params.has("pattern_spacing")) spacing = (double)resolved_params["pattern_spacing"];
+            Vector3 start_off = parse_vec3(resolved_params.has("pattern_start_offset") ? resolved_params["pattern_start_offset"] : Variant(), Vector3(0,0,0));
+            spawn_positions.clear();
+            for (int r = 0; r < rows; ++r) {
+                for (int c = 0; c < cols; ++c) {
+                    Vector3 off = Vector3((float)(c * spacing), 0.0f, (float)(r * spacing));
+                    spawn_positions.append(pos + start_off + off);
+                }
+            }
+        }
     }
-    if (!inst) {
-        UtilityFunctions::print(String("SummonExecutor: instantiate() returned null for PackedScene"));
-        return;
+    // Determine spawn_count (pattern may have produced multiple positions)
+    int spawn_count = spawn_positions.size();
+    if (spawn_count <= 0) spawn_count = 1;
+
+    // Charge additional mana for extra spawns beyond the first. The engine
+    // already charged the component's mana_cost once during composition, so
+    // we only need to deduct the extra (spawn_count - 1) * mana_cost here.
+    double unit_mana = 0.0;
+    if (resolved_params.has("mana_cost")) {
+        Variant mc = resolved_params["mana_cost"];
+        if (mc.get_type() == Variant::INT || mc.get_type() == Variant::FLOAT) unit_mana = (double)mc;
+    }
+    if (unit_mana <= 0.0) unit_mana = component->get_cost();
+
+    if (spawn_count > 1 && unit_mana > 0.0 && ctx.is_valid()) {
+        double extra_total = unit_mana * (double)(spawn_count - 1);
+        // Determine aspects to charge: prefer ctx.params.aspects, else caster assigned aspects
+        Array aspects_list;
+        Dictionary ctx_params = ctx->get_params();
+        if (ctx_params.has("aspects") && ctx_params["aspects"].get_type() == Variant::ARRAY) aspects_list = ctx_params["aspects"];
+        Node *caster_node = ctx->get_caster();
+        SpellCaster *sc = nullptr;
+        if (caster_node) sc = Object::cast_to<SpellCaster>(caster_node);
+        if (aspects_list.size() == 0 && sc) aspects_list = sc->get_assigned_aspects();
+
+        if (aspects_list.size() == 0) {
+            UtilityFunctions::print(String("SummonExecutor: no aspects available to charge mana for multi-spawn; aborting spawn"));
+            // Signal abort in context results so callers can handle gracefully
+            if (ctx.is_valid()) {
+                Dictionary r = ctx->get_results();
+                Dictionary err;
+                err["executor_id"] = component->get_executor_id();
+                err["reason"] = String("no_aspects_for_multi_spawn");
+                r["executor_failed"] = err;
+                ctx->set_results(r);
+            }
+            return;
+        }
+
+        // Split extra_total evenly among aspects and verify affordability
+        double per_aspect = extra_total / (double)aspects_list.size();
+        bool ok = true;
+        if (sc) {
+            for (int ai = 0; ai < aspects_list.size(); ++ai) {
+                String a = aspects_list[ai];
+                if (!sc->can_deduct(a, per_aspect)) { ok = false; break; }
+            }
+        } else {
+            ok = false;
+        }
+
+        if (!ok) {
+            UtilityFunctions::print(String("SummonExecutor: caster lacks mana for additional spawns; aborting spawn"));
+            // Signal abort reason into context results to avoid leaving callers blind
+            if (ctx.is_valid()) {
+                Dictionary r = ctx->get_results();
+                Dictionary err;
+                err["executor_id"] = component->get_executor_id();
+                err["reason"] = String("insufficient_mana_for_multi_spawn");
+                r["executor_failed"] = err;
+                ctx->set_results(r);
+            }
+            return;
+        }
+
+        // Deduct extra mana now
+        for (int ai = 0; ai < aspects_list.size(); ++ai) {
+            String a = aspects_list[ai];
+            sc->deduct_mana(a, per_aspect);
+        }
     }
 
+    // Determine parent once
     Node *parent = nullptr;
     Node *caster = ctx->get_caster();
     if (caster) {
         SceneTree *st = caster->get_tree();
         if (st) parent = st->get_current_scene();
-        // If current_scene is null, fall back to caster's parent in the scene tree
         if (!parent) parent = caster->get_parent();
     }
 
-    if (parent) {
-        String parent_path = String("<no-path>");
-        if (parent->has_method("get_path")) {
-            parent_path = Variant(parent->get_path()).operator String();
+    Array cur_targets = ctx->get_targets();
+    Dictionary cur_results = ctx->get_results();
+    Array spawned_arr;
+    if (cur_results.has("spawned_instances") && cur_results["spawned_instances"].get_type() == Variant::ARRAY) {
+        spawned_arr = cur_results["spawned_instances"];
+    }
+
+    for (int si = 0; si < spawn_positions.size(); ++si) {
+        Vector3 spos = spawn_positions[si];
+        // instantiate per-position
+        Node *inst = ps->instantiate();
+        if (!inst) {
+            UtilityFunctions::print(String("SummonExecutor: instantiate() returned null for PackedScene"));
+            continue;
         }
-        UtilityFunctions::print(String("SummonExecutor: adding instance to parent: ") + parent_path);
-        parent->add_child(inst);
-    } else {
-        UtilityFunctions::print(String("SummonExecutor: no valid parent found to add instance; skipping add_child"));
-    }
+        int64_t iid = inst->get_instance_id();
+        UtilityFunctions::print(String("SummonExecutor: instantiated PackedScene instance_id=") + Variant(iid).operator String());
 
-    // If the instance is a Node3D, set its global transform
-    Node3D *n3 = Object::cast_to<Node3D>(inst);
-    if (n3) {
-        UtilityFunctions::print(String("SummonExecutor: instance is Node3D, setting global transform. origin=") + Variant(pos).operator String());
-        n3->set_global_transform(t);
-    }
+        if (parent) {
+            String parent_path = String("<no-path>");
+            if (parent->has_method("get_path")) parent_path = Variant(parent->get_path()).operator String();
+            UtilityFunctions::print(String("SummonExecutor: adding instance to parent: ") + parent_path);
+            parent->add_child(inst);
+        } else {
+            UtilityFunctions::print(String("SummonExecutor: no valid parent found to add instance; skipping add_child"));
+        }
 
-    // Add the spawned instance to the SpellContext so subsequent components
-    // (e.g. a Force executor) or synergy extra_executors can access it via
-    // ctx->get_targets() or ctx->get_results(). We append to targets and also
-    // record in results.spawned_instances and results.last_spawned.
-    if (ctx.is_valid()) {
-        Array cur_targets = ctx->get_targets();
+        Node3D *n3 = Object::cast_to<Node3D>(inst);
+        if (n3) {
+            // apply transform per-instance
+            Transform3D it = t;
+            it.origin = spos;
+            UtilityFunctions::print(String("SummonExecutor: instance is Node3D, setting global transform. origin=") + Variant(spos).operator String());
+            n3->set_global_transform(it);
+        }
+
+        // Add to context lists
         cur_targets.append(inst);
-        ctx->set_targets(cur_targets);
-
-        Dictionary cur_results = ctx->get_results();
-        Array spawned_arr;
-        if (cur_results.has("spawned_instances") && cur_results["spawned_instances"].get_type() == Variant::ARRAY) {
-            spawned_arr = cur_results["spawned_instances"];
-        }
         spawned_arr.append(inst);
-        cur_results["spawned_instances"] = spawned_arr;
-        cur_results["last_spawned"] = inst;
-        // Mark the spawned instance as inert until a later component (e.g. Force)
-        // activates it. This prevents the projectile from immediately being
-        // simulated/affected by physics before the player confirms a control.
-        // We store a simple meta flag 'spell_inert' and attempt to disable
-        // physics on the instance. For RigidBody3D we switch the body into
-        // MODE_STATIC and set it sleeping (and record the previous mode so a
-        // later component can restore it). For other nodes we fall back to
-        // disabling physics processing on the node.
+
+        // inert handling per-instance
         inst->set_meta(String("spell_inert"), Variant(true));
-        // If the instance is a RigidBody3D, set it to static and sleep it.
         RigidBody3D *rb = Object::cast_to<RigidBody3D>(inst);
         if (rb) {
-            // Save previous mode so activators can restore it later (use property access
-            // since the generated binding may not expose get_mode/set_mode directly).
             int prev_mode = 0;
             Variant prev_mode_v = rb->get("mode");
             if (prev_mode_v.get_type() == Variant::Type::INT) prev_mode = (int)prev_mode_v;
             inst->set_meta(String("spell_prev_mode"), Variant(prev_mode));
-            // Set mode to STATIC (1) and put the body to sleep. Using property set to avoid
-            // depending on presence of generated helpers for set_mode.
             rb->set("mode", Variant(1));
             rb->set("freeze", Variant(true));
         } else {
-            // Best-effort for generic nodes
             inst->set_physics_process(false);
         }
-        ctx->set_results(cur_results);
-
-        UtilityFunctions::print(String("SummonExecutor: appended spawned instance to ctx.targets and ctx.results; targets_size=") + String::num(cur_targets.size()));
     }
+
+    // Write back targets/results
+    ctx->set_targets(cur_targets);
+    cur_results["spawned_instances"] = spawned_arr;
+    if (spawned_arr.size() > 0) cur_results["last_spawned"] = spawned_arr[spawned_arr.size() - 1];
+    ctx->set_results(cur_results);
+    UtilityFunctions::print(String("SummonExecutor: appended spawned instances to ctx.targets and ctx.results; targets_size=") + String::num(cur_targets.size()));
 }
 
 void SummonExecutor::_bind_methods() {

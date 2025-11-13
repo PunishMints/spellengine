@@ -220,7 +220,33 @@ void ControlOrchestrator::_start_control_at(int idx, const Callable &on_complete
 
     if (start_pts.size() == 0 && ctx_ref.is_valid()) {
         Dictionary res = ctx_ref->get_results();
-        if (res.has("last_spawned")) {
+        // If multiple instances were spawned by a SummonExecutor, prefer the
+        // average of their global positions as the prepopulated start point
+        // so the gizmo preview anchors to the group's center.
+        if (res.has("spawned_instances") && res["spawned_instances"].get_type() == Variant::ARRAY) {
+            Array sa = res["spawned_instances"];
+            Vector3 sum = Vector3(0,0,0);
+            int found = 0;
+            for (int si = 0; si < sa.size(); ++si) {
+                Variant sv = sa[si];
+                if (sv.get_type() != Variant::OBJECT) continue;
+                Object *o = Object::cast_to<Object>(sv);
+                if (!o) continue;
+                if (!UtilityFunctions::is_instance_id_valid(o->get_instance_id())) continue;
+                Node3D *n3 = Object::cast_to<Node3D>(o);
+                if (!n3) continue;
+                if (!n3->is_inside_tree()) continue;
+                sum += n3->get_global_transform().origin;
+                found += 1;
+            }
+            if (found > 0) {
+                Vector3 avg = sum / (real_t)found;
+                Array a; a.append(avg);
+                start_pts = a;
+                UtilityFunctions::print(String("[ControlOrchestrator] prepopulating gizmo from spawned_instances average at ") + Variant(avg).operator String());
+            }
+        }
+        else if (res.has("last_spawned")) {
             Variant lt = res["last_spawned"];
             if (lt.get_type() == Variant::OBJECT) {
                 Object *o = Object::cast_to<Object>(lt);

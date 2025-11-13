@@ -802,6 +802,23 @@ void SpellEngine::resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node
         execute_components_range(spell, ctx, 0, first_control_index);
     }
 
+    // If a prefix executor signalled a failure via ctx.results.executor_failed,
+    // abort resolution and forward the failure to the caller.
+    if (ctx.is_valid()) {
+        Dictionary r = ctx->get_results();
+        if (r.has("executor_failed")) {
+            Dictionary err = r["executor_failed"];
+            Array args;
+            Dictionary out;
+            out["ok"] = false;
+            out["error"] = String("executor_failed_before_controls");
+            out["detail"] = err;
+            args.append(out);
+            if (on_complete.is_valid()) on_complete.callv(args);
+            return;
+        }
+    }
+
     // If there are no controls at all, finish by calling on_complete (spell already executed)
     if (controls.size() == 0) {
         Array args;
@@ -864,6 +881,14 @@ void SpellEngine::execute_components_range(Ref<Spell> spell, Ref<SpellContext> c
                 Dictionary rp_with_cast = resolved_params;
                 rp_with_cast["cast_id"] = cast_id;
                 exec->execute(ctx, comp, rp_with_cast);
+                // If an executor signalled failure through the context, abort further execution
+                if (ctx.is_valid()) {
+                    Dictionary r = ctx->get_results();
+                    if (r.has("executor_failed")) {
+                        UtilityFunctions::print(String("SpellEngine: executor '") + comp->get_executor_id() + "' signalled failure; aborting remaining components");
+                        return;
+                    }
+                }
             }
         } else {
             UtilityFunctions::print(String("SpellEngine: no executor registered for: ") + exec_id);

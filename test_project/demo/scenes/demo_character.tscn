@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" uid="uid://bbwebatbx8x42" path="res://demo/scripts/character_controller.gd" id="1"]
 [ext_resource type="Script" uid="uid://c7cxf4c0vwiu" path="res://demo/scripts/spell_slot.gd" id="2_rrctf"]
-[ext_resource type="SpellTemplate" uid="uid://dqw8mxn7by3hn" path="res://demo/spells/summon_fireball_spell.tres" id="3_rrctf"]
+[ext_resource type="SpellTemplate" uid="uid://b8bupyfomnyhy" path="res://demo/spells/fireball_swarm.tres" id="3_rrctf"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_vo34d"]
 
@@ -36,9 +36,6 @@ aspect_mana = {
 "wind": 100.0
 }
 assigned_aspects = ["fire", "water", "wind"]
-aspect_scalers = {
-"mana_cost": 0.0
-}
 
 [node name="SpellSlot_1" type="Node" parent="Caster"]
 script = ExtResource("2_rrctf")

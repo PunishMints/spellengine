@@ -1,3 +1,38 @@
+# Ignore common build artifacts
+*.o
+*.obj
+*.os
+*.so
+*.a
+*.lib
+*.exp
+*.pdb
+*.dll
+*.dylib
+*.exe
+*.out
+*.lo
+*.la
+*.idb
+*.bc
+
+# SCons and Godot build outputs
+bin/
+build/
+gen/
+test_project/*/bin/
+godot-cpp/bin/
+.sconsign.dblite
+
+# Python / editor cache
+__pycache__/
+.cache/
+.vscode/
+
+# Misc
+*.pyc
+*.swp
+*.user
 # Godot auto generated files
 *.gen.*
 .godot/
@@ -161,3 +196,10 @@ nbdist/
 *.orig
 *.old
 *.log
+.clangd
+dont_touch.txt
+godot-cpp
+SConstruct
+.github/workflows/build-plugin.yml
+.vscode/settings.json
+
