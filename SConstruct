@@ -24,7 +24,7 @@ def find_sources(dirs, exts):
     return sources
 
 # Configuration
-libname = "plugin_name"
+libname = "spellengine"
 projectdir = "test_project"
 
 # Set up the environment
@@ -36,9 +36,9 @@ customs = [os.path.abspath(path) for path in customs]
 
 # Define GDExtension-specific options
 opts = Variables(customs, ARGUMENTS)
-opts.Add('source_dirs', 'List of source directories (comma-separated)', 'src') # Directory for source files
+opts.Add('source_dirs', 'List of source directories (comma-separated)', 'src/resources,src/executors,src/registries,src/runtime,src/editor') # Directory for source files; include editor sources by default
 opts.Add('source_exts', 'List of source file extensions (comma-separated)', '.cpp,.c,.cc,.cxx') 
-opts.Add('include_dirs', 'List of include directories (comma-separated)', 'src') # Directory for headers - some might want to create a separate include directory
+opts.Add('include_dirs', 'List of include directories (comma-separated)', 'include,src') # Directory for headers - include both include and src directories (prefer include first)
 opts.Add('doc_output_dir', 'Directory for documentation output', 'gen')
 opts.Add('precision', 'Floating-point precision (single or double)', 'single')  # Default to single
 opts.Add('bundle_id_prefix', 'Bundle identifier prefix (reverse-DNS format)', 'com.gdextension')  # Default prefix
@@ -54,8 +54,8 @@ opts.Add(EnumVariable(
 # explicitly specify "enabled_classes" which disables all other classes.
 
 is_2d_profile_used = False
-is_3d_profile_used = False
-is_custom_profile_used = True
+is_3d_profile_used = True
+is_custom_profile_used = False
 if is_2d_profile_used:
     env["build_profile"] = "2d_build_profile.json"
 elif is_3d_profile_used:
@@ -93,6 +93,15 @@ env.Append(CPPPATH=include_dirs)
 
 # Find all .cpp files recursively in the specified source directories
 sources = find_sources(source_dirs, source_exts)
+# Normalize to absolute paths to avoid duplicates (e.g., relative vs absolute)
+sources = [os.path.abspath(s) for s in sources]
+# Ensure register_types.cpp is included. prefer the runtime path, fall back to root for compatibility
+for rt_path in ('src/runtime/register_types.cpp', 'src/register_types.cpp'):
+    if os.path.exists(rt_path):
+        abs_rt = os.path.abspath(rt_path)
+        if abs_rt not in sources:
+            sources.append(abs_rt)
+        break
 
 # Handle documentation generation if applicable
 if env.get("target") in ["editor", "template_debug"]:

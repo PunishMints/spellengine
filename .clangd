@@ -1,3 +1,24 @@
 CompileFlags:
-  Add: -Wno-unknown-warning-option
+  Add:
+    - -std=c++17
+    - -DWIN32
+    - -D_WINDOWS
+    - -DGDEXTENSION
+    - -DNOMINMAX
+    - -D_HAS_EXCEPTIONS=0
+    - -Iinclude
+    - -Igodot-cpp/include
+    - -Igodot-cpp/gen/include
+    - -Igodot-cpp/gdextension
+    - -Isrc
+    - -Isrc/resources
+    - -Isrc/executors
+    - -Isrc/registries
+    - -Isrc/runtime
+    - -Wno-unknown-warning-option
   Remove: [-m*, -f*]
+HeaderFileExtensions:
+  - h
+  - hpp
+  - hxx
+  - hh

@@ -197,9 +197,4 @@ nbdist/
 *.old
 *.log
 .clangd
-dont_touch.txt
-godot-cpp
-SConstruct
-.github/workflows/build-plugin.yml
-.vscode/settings.json
 
