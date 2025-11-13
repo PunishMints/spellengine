@@ -270,36 +270,50 @@ func _process(delta:float) -> void:
 
 	# Also log select/cancel actions even when no control is active so we can verify InputMap is firing
 	if control_stack.size() == 0:
+		# Short-circuit: if native controls are active or we've recently
+		# confirmed a native control, skip handling select/cancel/spell hotkeys
+		# so the same physical click doesn't immediately start another spell.
+		var ignore_actions_now := false
+		if has_meta("spellengine_ignore_actions_until"):
+			var until = int(get_meta("spellengine_ignore_actions_until"))
+			# The C++ layer sets engine ticks in milliseconds via the Time singleton.
+			# Use Time.get_ticks_msec() here (monotonic) so both sides compare the same time base.
+			if Time.get_ticks_msec() < until:
+				ignore_actions_now = true
+
 		if has_meta("spellengine_controls_active") and get_meta("spellengine_controls_active"):
 			# If spellengine controls are active (native C++ gizmos), skip handling select here
-			# Let the native control system handle input while active
-			# Print this only once when the state becomes active to avoid spamming logs
+			# Let the native control system handle input while active. Print once to avoid spam.
 			if not _native_controls_active_printed:
 				print("[Controller][_process] native controls active; skipping select handling")
 				_native_controls_active_printed = true
 		else:
 			# ensure we reset the one-shot flag when native controls are not active
 			_native_controls_active_printed = false
-			if InputMap.has_action("select") and Input.is_action_just_pressed("select"):
-				print("[Controller][_process] select action pressed (no active control)")
-			# Debug: dump registered spell actions only when the count changes to reduce spam
-			var current_count = _registered_spell_actions.size()
-			if current_count != _last_registered_count:
-				print("[Controller][_process] registered_spell_actions_count:", current_count)
-				for r in _registered_spell_actions:
-					if typeof(r) == TYPE_DICTIONARY and r.has("action"):
-						print("[Controller][_process] registered action:", r["action"], "slot:", r.has("slot_node") and r["slot_node"] or "<no-slot>")
-				_last_registered_count = current_count
-			if InputMap.has_action("cancel") and Input.is_action_just_pressed("cancel"):
-				print("[Controller][_process] cancel action pressed (no active control)")
 
-			# Check registered spell hotkeys (simple key_press triggers)
-			for reg in _registered_spell_actions:
-				if typeof(reg) == TYPE_DICTIONARY and reg.has("action"):
-					var an = reg["action"]
-					if InputMap.has_action(an) and Input.is_action_just_pressed(an):
-						print("[Controller] spell action pressed:", an)
-						_start_spell_from_template(reg["spell"], reg["control"])
+			# If we're in the ignore window, don't respond to select/cancel/hotkeys
+			if not ignore_actions_now:
+				if InputMap.has_action("select") and Input.is_action_just_pressed("select"):
+					print("[Controller][_process] select action pressed (no active control)")
+				if InputMap.has_action("cancel") and Input.is_action_just_pressed("cancel"):
+					print("[Controller][_process] cancel action pressed (no active control)")
+
+				# Check registered spell hotkeys (simple key_press triggers)
+				for reg in _registered_spell_actions:
+					if typeof(reg) == TYPE_DICTIONARY and reg.has("action"):
+						var an = reg["action"]
+						if InputMap.has_action(an) and Input.is_action_just_pressed(an):
+							print("[Controller] spell action pressed:", an)
+							_start_spell_from_template(reg["spell"], reg["control"])
+
+		# Debug: dump registered spell actions only when the count changes to reduce spam
+		var current_count = _registered_spell_actions.size()
+		if current_count != _last_registered_count:
+			print("[Controller][_process] registered_spell_actions_count:", current_count)
+			for r in _registered_spell_actions:
+				if typeof(r) == TYPE_DICTIONARY and r.has("action"):
+					print("[Controller][_process] registered action:", r["action"], "slot:", r.has("slot_node") and r["slot_node"] or "<no-slot>")
+			_last_registered_count = current_count
 
 	if control_stack.size() > 0:
 		var top = control_stack[control_stack.size()-1]
@@ -332,7 +346,11 @@ func _process(delta:float) -> void:
 	if not Engine.is_editor_hint():
 		if InputMap.has_action("pause") and Input.is_action_just_pressed("pause"):
 			var new_paused = not get_tree().paused
-			_set_paused(new_paused)
+			# If native controls are active, only toggle the input/pause UI (keep SceneTree running)
+			if has_meta("spellengine_controls_active") and get_meta("spellengine_controls_active"):
+				set_input_paused(new_paused)
+			else:
+				_set_paused(new_paused)
 
 	# Derive effective parameters (caster can override)
 	var distance: float = float(_get_camera_param("camera_distance", cam_distance))
@@ -760,9 +778,22 @@ func _on_quit_pressed() -> void:
 
 
 func _set_paused(value: bool) -> void:
-	# Set engine pause and keep local mirror in sync.
+	# Set SceneTree paused state and keep local mirror in sync. This function
+	# is intentionally minimal: it actually pauses/unpauses the game. UI-only
+	# input/pause handling is managed separately via `set_input_paused()`.
 	print("[Controller] _set_paused ->", value)
 	get_tree().paused = value
+	_paused = value
+	_on_pause_changed(_paused)
+	_update_mouse_capture()
+
+
+func set_input_paused(value: bool) -> void:
+	# Toggle the pause UI and input-related state without pausing the SceneTree.
+	# Useful when native controls are active and we want to present the pause
+	# menu or temporarily change input capture without stopping engine processing.
+	print("[Controller] set_input_paused ->", value)
+	# Keep SceneTree running; only update local mirror and UI
 	_paused = value
 	_on_pause_changed(_paused)
 	_update_mouse_capture()

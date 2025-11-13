@@ -251,6 +251,17 @@ void SummonExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> componen
         spawned_arr.append(inst);
         cur_results["spawned_instances"] = spawned_arr;
         cur_results["last_spawned"] = inst;
+        // Mark the spawned instance as inert until a later component (e.g. Force)
+        // activates it. This prevents the projectile from immediately being
+        // simulated/affected by physics before the player confirms a control.
+        // We store a simple meta flag 'spell_inert' and disable physics processing
+        // on the node where possible.
+        inst->set_meta(String("spell_inert"), Variant(true));
+        // Try to disable physics processing on the instance so it remains inert.
+        // This is a best-effort action; if the instance is a RigidBody3D its
+        // internal physics may still run, but many custom projectiles will
+        // respect physics_process being disabled on the root node.
+        inst->set_physics_process(false);
         ctx->set_results(cur_results);
 
         UtilityFunctions::print(String("SummonExecutor: appended spawned instance to ctx.targets and ctx.results; targets_size=") + String::num(cur_targets.size()));

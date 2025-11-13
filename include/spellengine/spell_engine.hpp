@@ -64,6 +64,13 @@ public:
     // High-level wrapper: resolve interactive controls for a spell using ControlOrchestrator.
     // This is a safe entrypoint for GDScript and will create+destroy the orchestrator.
     void resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node *parent, const Callable &on_complete);
+    // Execute a contiguous range of components: [start, end)
+    // End is exclusive. This allows executing a prefix or suffix of a spell's
+    // components while preserving original ordering semantics.
+    void execute_components_range(Ref<Spell> spell, Ref<SpellContext> ctx, int start, int end);
+    // Execute only the control-only components (those that require interactive inputs)
+    // This is invoked after control results are merged into the SpellContext.
+    void execute_control_components(Ref<Spell> spell, Ref<SpellContext> ctx);
     // Validate a control result server-side. Returns true if valid.
     bool validate_control_result(const String &mode, const Dictionary &result) const;
 

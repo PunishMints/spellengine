@@ -56,32 +56,71 @@ void ForceExecutor::execute(Ref<SpellContext> ctx, Ref<SpellComponent> component
     UtilityFunctions::print(String("ForceExecutor: applying force to targets_count=") + String::num(targets.size()));
     for (int i = 0; i < targets.size(); ++i) {
         Variant v = targets[i];
+        if (v.get_type() != Variant::OBJECT) {
+            UtilityFunctions::print(String("ForceExecutor: target[") + String::num(i) + "] is not an object; skipping");
+            continue;
+        }
         Object *obj = Object::cast_to<Object>(v);
-        Node *node = Object::cast_to<Node>(v);
+        // Guard: ensure the object pointer is non-null and that the engine still
+        // considers the instance id valid. Use UtilityFunctions::is_instance_id_valid
+        // which accepts the instance id.
+        if (!obj) {
+            UtilityFunctions::print(String("ForceExecutor: target[") + String::num(i) + "] object cast failed; skipping");
+            continue;
+        }
+        int64_t obj_iid = obj->get_instance_id();
+        if (!UtilityFunctions::is_instance_id_valid(obj_iid)) {
+            UtilityFunctions::print(String("ForceExecutor: target[") + String::num(i) + "] instance id invalid; skipping");
+            continue;
+        }
+        Node *node = Object::cast_to<Node>(obj);
         String tname = String("<unknown>");
         if (node) tname = node->get_name();
         if (obj) tname = obj->get_class();
         UtilityFunctions::print(String("ForceExecutor: target[") + String::num(i) + "]: name=" + tname);
+
         if (node) {
+            // If the node is flagged inert (spawned but not yet activated),
+            // activate it now by clearing the meta flag and re-enabling physics
+            // processing. This is a best-effort activation for custom projectile
+            // scenes spawned by SummonExecutor.
+            if (node->has_meta(String("spell_inert"))) {
+                Variant mi = node->get_meta(String("spell_inert"));
+                if (mi.get_type() == Variant::BOOL && (bool)mi) {
+                    UtilityFunctions::print(String("ForceExecutor: activating inert target '") + tname + "'");
+                    node->set_meta(String("spell_inert"), Variant(false));
+                    node->set_physics_process(true);
+                }
+            }
+
             // Use standard native physics API for Node3D targets. Prefer casting
             // to RigidBody3D and calling the native apply_central_impulse binding.
             RigidBody3D *rb = Object::cast_to<RigidBody3D>(node);
             if (rb) {
-                // Prefer the native C++ binding for applying an impulse so physics behaves correctly.
+                int64_t rb_iid = rb->get_instance_id();
+                if (!UtilityFunctions::is_instance_id_valid(rb_iid)) {
+                    UtilityFunctions::print(String("ForceExecutor: RigidBody3D target instance invalid; skipping"));
+                    continue;
+                }
                 UtilityFunctions::print(String("ForceExecutor: applying central impulse (native) to RigidBody3D '") + node->get_name() + String("' -> ") + Variant(force_vec).operator String());
-                // Call the native method directly
                 rb->apply_central_impulse(force_vec);
                 continue;
             }
-            UtilityFunctions::print(String("ForceExecutor: target node is not a RigidBody3D; skipping physics impulse: ") + node->get_name());
+
+            UtilityFunctions::print(String("ForceExecutor: target node is not a valid RigidBody3D; skipping physics impulse: ") + node->get_name());
         } else if (obj) {
-            // If it's a RigidBody3D castable from Object, prefer native call
+            // If it's an Object that can be cast to RigidBody3D, prefer native call
             RigidBody3D *rb_obj = Object::cast_to<RigidBody3D>(obj);
             if (rb_obj) {
+                int64_t rbobj_iid = rb_obj->get_instance_id();
+                if (!UtilityFunctions::is_instance_id_valid(rbobj_iid)) {
+                    UtilityFunctions::print(String("ForceExecutor: RigidBody3D object target instance invalid; skipping"));
+                    continue;
+                }
                 UtilityFunctions::print(String("ForceExecutor: applying central impulse (native) to RigidBody3D object -> ") + Variant(force_vec).operator String());
                 rb_obj->apply_central_impulse(force_vec);
             } else {
-                UtilityFunctions::print(String("ForceExecutor: object target is not RigidBody3D; skipping: ") + obj->get_class());
+                UtilityFunctions::print(String("ForceExecutor: object target is not a valid RigidBody3D; skipping: ") + obj->get_class());
             }
         }
     }

@@ -28,7 +28,14 @@ private:
     Dictionary float_params; // generic numeric params like radius/height
     Ref<PackedScene> preview_scene;
     Node *preview_instance = nullptr;
+    // Optional cached preview sub-nodes for vector visualization
+    Node *preview_vector_root = nullptr;
+    Node *preview_vector_start = nullptr;
+    Node *preview_vector_end = nullptr;
+    Node *preview_vector_line = nullptr;
     Callable completion_callable;
+    // Hover polling state: when the gizmo has only a start point we will
+    // poll the mouse/camera each frame to update the live end point.
 
 public:
     void set_mode(const String &m);
@@ -50,6 +57,7 @@ public:
     // Handle input events routed from an input controller. Camera may be null
     // for screen-space inputs.
     void handle_input(const Ref<InputEvent> &ev, Camera3D *camera);
+    void _process(double delta) override;
 
     void set_float_param(const String &key, double v);
     double get_float_param(const String &key) const;

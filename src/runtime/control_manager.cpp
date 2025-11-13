@@ -3,6 +3,7 @@
 #include "spellengine/spell_engine.hpp"
 #include "spellengine/control_input_controller.hpp"
 #include "spellengine/control_preview_factory.hpp"
+#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 using namespace godot;
@@ -43,6 +44,12 @@ void ControlManager::attach_and_start(Node *parent, Node *gizmo_node, const Call
     if (!gizmo) {
         return;
     }
+
+    // Ensure the gizmo will receive per-frame _process() calls. Some
+    // environments may add gizmos while processing is disabled on the
+    // node; explicitly enable processing here so gizmo hover polling runs.
+    gizmo->set_process(true);
+    gizmo->set_process_input(true);
 
     int64_t id = gizmo->get_instance_id();
 
@@ -141,8 +148,32 @@ void ControlManager::_on_gizmo_complete(godot::Object *gizmo_obj, const godot::V
     // Optionally remove gizmo from scene tree
     Node *n = Object::cast_to<Node>(gizmo_obj);
     if (n) {
+        // Set a short-lived ignore-until meta on the parent so scripts that
+        // poll Input.is_action_just_pressed can ignore the confirming click.
+        // Use the engine-monotonic Time singleton (ticks in ms) so this value
+        // is stable and comparable from GDScript via Time.get_ticks_msec().
+        Node *n_parent = n->get_parent();
+        if (n_parent) {
+            int64_t now_ms = (int64_t)Time::get_singleton()->get_ticks_msec();
+            // ignore actions for 200ms
+            n_parent->set_meta(String("spellengine_ignore_actions_until"), Variant(now_ms + (int64_t)200));
+        }
         // unregister from input controller so it can restore cursor/input state
-        if (input_controller) input_controller->remove_gizmo(n);
+        if (input_controller) {
+            input_controller->remove_gizmo(n);
+            // If the input controller no longer manages any gizmos, remove it as
+            // well so we don't leave stale controllers in the scene. This mirrors
+            // the gizmo cleanup above and ensures input controllers are cleaned
+            // up when no longer needed.
+            if (input_controller->get_gizmo_count() == 0) {
+                Node *ctrl_parent = input_controller->get_parent();
+                if (ctrl_parent) {
+                    ctrl_parent->remove_child(input_controller);
+                }
+                input_controller->queue_free();
+                input_controller = nullptr;
+            }
+        }
         if (n->get_parent()) {
             n->get_parent()->remove_child(n);
         }

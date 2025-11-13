@@ -35,6 +35,10 @@ public:
     // Deferred self-cleanup to allow safe deletion after callbacks return
     void _cleanup_self();
 
+    // Set the first control index so the orchestrator can execute remaining
+    // components after controls are resolved.
+    void set_first_control_index(int idx);
+
 private:
     // Stored state while resolving controls
     Array controls;
@@ -44,6 +48,10 @@ private:
     Node *parent_node = nullptr;
     Callable final_on_complete;
     int current_index = 0;
+    // Index of the first control component in the spell's component list
+    int first_control_index = 0;
+
+    
 
     // Helper to start a control at the given index
     void _start_control_at(int idx, const Callable &on_complete);

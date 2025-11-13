@@ -3,6 +3,7 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/immediate_mesh.hpp>
 #include <godot_cpp/classes/box_mesh.hpp>
 #include <godot_cpp/classes/sphere_mesh.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
@@ -28,6 +29,16 @@ Node *ControlPreviewFactory::create_preview(const String &type, const Dictionary
     } else if (type == "sphere") {
         Ref<SphereMesh> sm = memnew(SphereMesh());
         mesh = sm;
+    } else if (type.find("choose_vector") != -1 || type == "vector") {
+        // Create an ImmediateMesh-backed MeshInstance3D for drawing a line preview
+        Ref<ImmediateMesh> im = memnew(ImmediateMesh());
+        mi->set_mesh(im);
+        Ref<StandardMaterial3D> mat = memnew(StandardMaterial3D());
+        mat->set_albedo(Color(0.2, 0.8, 0.4, 0.9));
+        mat->set_emission(Color(0.4, 1.0, 0.6));
+        mi->set_material_override(mat);
+        root->add_child(mi);
+        return root;
     } else {
         Ref<SphereMesh> sm = memnew(SphereMesh());
         mesh = sm;

@@ -778,7 +778,47 @@ void SpellEngine::resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node
         return;
     }
 
+    // Determine control components and their indices so we can run components
+    // preceding the first control, then resolve inputs, then run the
+    // remainder of the spell.
+    Array controls = collect_controls(spell, ctx);
+    int first_control_index = INT32_MAX;
+    for (int i = 0; i < controls.size(); ++i) {
+        Variant v = controls[i];
+        if (v.get_type() != Variant::DICTIONARY) continue;
+        Dictionary d = v;
+        Variant idxv = d.get(Variant("index"), Variant());
+        if (idxv.get_type() == Variant::INT) {
+            int idx = (int)idxv;
+            if (idx < first_control_index) first_control_index = idx;
+        }
+    }
+    if (first_control_index == INT32_MAX) first_control_index = 0;
+
+    // Execute prefix components up to the first control (exclusive). This
+    // preserves ordering: components defined before the first interactive
+    // control run immediately.
+    if (first_control_index > 0) {
+        execute_components_range(spell, ctx, 0, first_control_index);
+    }
+
+    // If there are no controls at all, finish by calling on_complete (spell already executed)
+    if (controls.size() == 0) {
+        Array args;
+        Dictionary out;
+        out["ok"] = true;
+        out["context"] = ctx;
+        args.append(out);
+        if (on_complete.is_valid()) on_complete.callv(args);
+        return;
+    }
+
+    // Then: create an orchestrator to resolve the interactive controls for
+    // the remaining components and execute them when done.
     ControlOrchestrator *orch = memnew(ControlOrchestrator());
+    // record the first control index on the orchestrator so it can run the
+    // remainder after controls are resolved
+    orch->set_first_control_index(first_control_index);
 
     // Create a wrapper callable bound to this SpellEngine instance that will
     // receive the orchestrator's out dictionary, then forward the result to the
@@ -790,6 +830,87 @@ void SpellEngine::resolve_controls(Ref<Spell> spell, Ref<SpellContext> ctx, Node
     // Start orchestration (async). The orchestrator will call the wrapper with a single
     // Dictionary argument (the result), which will be forwarded by the engine.
     orch->resolve_controls(spell, ctx, parent, wrapper);
+}
+
+void SpellEngine::execute_components_range(Ref<Spell> spell, Ref<SpellContext> ctx, int start, int end) {
+    if (!spell.is_valid() || !ctx.is_valid()) return;
+    TypedArray<Ref<SpellComponent>> comps = spell->get_components();
+    if (start < 0) start = 0;
+    if (end > comps.size()) end = comps.size();
+    if (start >= end) return;
+
+    Node *caster_node = ctx->get_caster();
+    SpellCaster *sc_for_resolve = nullptr;
+    if (caster_node) sc_for_resolve = Object::cast_to<SpellCaster>(caster_node);
+
+    ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
+
+    for (int i = start; i < end; ++i) {
+        Ref<SpellComponent> comp = comps[i];
+        if (!comp.is_valid()) continue;
+
+        Dictionary resolved = resolve_component_params(comp, Array(), sc_for_resolve, ctx->get_params());
+        Dictionary resolved_params;
+        if (resolved.has("resolved_params")) resolved_params = resolved["resolved_params"];
+
+        // execute if registered
+        String exec_id = comp->get_executor_id();
+        if (reg && reg->has_executor(exec_id)) {
+            Ref<IExecutor> exec = reg->get_executor(exec_id);
+            if (exec.is_valid()) {
+                // ensure the resolved params carry a cast id so targets can group events
+                cast_counter += 1;
+                String cast_id = "spell_cast_" + String::num(cast_counter);
+                Dictionary rp_with_cast = resolved_params;
+                rp_with_cast["cast_id"] = cast_id;
+                exec->execute(ctx, comp, rp_with_cast);
+            }
+        } else {
+            UtilityFunctions::print(String("SpellEngine: no executor registered for: ") + exec_id);
+        }
+    }
+}
+
+void SpellEngine::execute_control_components(Ref<Spell> spell, Ref<SpellContext> ctx) {
+    if (!spell.is_valid() || !ctx.is_valid()) return;
+
+    Node *caster_node = ctx->get_caster();
+    SpellCaster *sc_for_resolve = nullptr;
+    if (caster_node) sc_for_resolve = Object::cast_to<SpellCaster>(caster_node);
+
+    TypedArray<Ref<SpellComponent>> comps = spell->get_components();
+    ExecutorRegistry *reg = ExecutorRegistry::get_singleton();
+
+    for (int i = 0; i < comps.size(); ++i) {
+        Ref<SpellComponent> comp = comps[i];
+        if (!comp.is_valid()) continue;
+        String comp_exec_id = comp->get_executor_id();
+        // Only execute control-only components here (those that begin with choose_/select_)
+        if (!(comp_exec_id.begins_with("choose_") || comp_exec_id.begins_with("select_"))) {
+            continue;
+        }
+
+        // Resolve params for this component now that ctx may contain control results
+        Dictionary resolved = resolve_component_params(comp, Array(), sc_for_resolve, ctx->get_params());
+        Dictionary resolved_params;
+        if (resolved.has("resolved_params")) resolved_params = resolved["resolved_params"];
+
+        ExecutorRegistry *ereg = ExecutorRegistry::get_singleton();
+        if (ereg && ereg->has_executor(comp_exec_id)) {
+            Ref<IExecutor> exec = ereg->get_executor(comp_exec_id);
+            if (exec.is_valid()) {
+                // ensure the resolved params carry a cast id if not already present
+                Dictionary rp_with_cast = resolved_params;
+                // provide a unique cast id if missing
+                cast_counter += 1;
+                String cast_id = "spell_cast_" + String::num(cast_counter);
+                rp_with_cast["cast_id"] = cast_id;
+                exec->execute(ctx, comp, rp_with_cast);
+            }
+        } else {
+            UtilityFunctions::print(String("SpellEngine: no executor registered for control component: ") + comp_exec_id);
+        }
+    }
 }
 
 void SpellEngine::_resolve_controls_forward(const Variant &out, const Variant &orch_v, const Variant &orig_cb_v) {
